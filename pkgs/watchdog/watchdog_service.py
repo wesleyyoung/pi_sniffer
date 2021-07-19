@@ -26,7 +26,7 @@ class WatchdogService:
     # Every 300 seconds tell pi_sniffer to flush output to disk.
     ##
     def do_watchdog(self):
-        if (self.current_time - 60) > self.watch_dog:
+        if (self.get_current_time() - 60) > self.watch_dog:
             self.watch_dog = self.current_time
             overview_stats = CommandService.run(b"o", True)
             if overview_stats is not None:
@@ -48,8 +48,8 @@ class WatchdogService:
                     self.last_stats = stats[5]
 
         # let's check if we should flush output too
-        if (self.current_time - 300) > self.flush_time:
-            self.flush_time = self.current_time
+        if (self.get_current_time() - 300) > self.flush_time:
+            self.flush_time = self.get_current_time()
             # only send the command if it's running
             pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
             if pi_sniffer.stdout.find(b"pi_sniffer") != -1:

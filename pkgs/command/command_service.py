@@ -7,8 +7,13 @@ def create_udp_socket():
     return socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
+def create_tcp_socket():
+    return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+
 socket_ip = "127.0.0.1"
 socket_port = 1270
+kismet_port = 2501
 backend_sock = create_udp_socket()
 
 
@@ -23,7 +28,7 @@ class CommandService:
 
         pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
         if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-            backend_sock.sendto(command + b"\n", (socket_ip, 1270))
+            backend_sock.sendto(command + b"\n", (socket_ip, socket_port))
             if get_response is True:
                 data = backend_sock.recvfrom(65535)[0]
 
@@ -34,8 +39,8 @@ class CommandService:
     ##
     @staticmethod
     def do_kismet_command(command):
-        s = create_udp_socket()
-        s.connect((socket_ip, 2501))
+        s = create_tcp_socket()
+        s.connect((socket_ip, kismet_port))
         s.sendall(b"!0 " + command + b"\n")
         s.close()
 
@@ -45,17 +50,17 @@ class CommandService:
     ##
     @staticmethod
     def kismet_ant_info(uuid):
-        s = create_udp_socket()
-        s.connect((socket_ip, 2501))
+        s = create_tcp_socket()
+        s.connect((socket_ip, kismet_port))
         s.sendall(b"!0 ENABLE SOURCE uuid,channellist,hop,channel\n")
         data = b""
 
         try:
             data = s.recv(1024)
             s.close()
-        except:
+        except Exception as e:
+            print(e)
             pass
-
         channel_info = re.search(b"SOURCE: " + uuid + b" ([0-9,]+) ([0-9]+) ([0-9]+)", data)
         if channel_info is None:
             return b'', b'', b''
@@ -69,8 +74,8 @@ class CommandService:
     ##
     @staticmethod
     def kismet_set_channel(uuid, channel):
-        s = create_udp_socket()
-        s.connect((socket_ip, 2501))
+        s = create_tcp_socket()
+        s.connect((socket_ip, kismet_port))
         if channel == b"0":
             s.sendall(b"!0 HOPSOURCE " + uuid + b" HOP 3\n")
         else:

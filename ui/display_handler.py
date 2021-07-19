@@ -505,15 +505,18 @@ def do_ap_view():
 
                 data = ap_service.get_ap_info(ap)
                 if data is not None:
-                    right_pane_start = width / 2 + 2
-                    if ap_view_type == ap_view_type_radio_info:
-                        draw.text((right_pane_start, 10), "Sig: " + data["rssi"], font=font, fill=1)
-                        draw.text((right_pane_start, 20), "Ch: " + data["channel"], font=font, fill=1)
-                    elif ap_view_type == ap_view_type_station_info:
-                        draw.text((right_pane_start, 10), data["bssid"][:9], font=font, fill=1)
-                        draw.text((right_pane_start, 20), data["bssid"][9:], font=font, fill=1)
-                        draw.text((right_pane_start, 30), data["security"], font=font, fill=1)
-                        draw.text((right_pane_start, 40), "Clnts: " + data["client_count"], font=font, fill=1)
+                    try:
+                        right_pane_start = width / 2 + 2
+                        if ap_view_type == ap_view_type_radio_info:
+                            draw.text((right_pane_start, 10), "Sig: " + data["rssi"], font=font, fill=1)
+                            draw.text((right_pane_start, 20), "Ch: " + data["channel"], font=font, fill=1)
+                        elif ap_view_type == ap_view_type_station_info:
+                            draw.text((right_pane_start, 10), data["bssid"][:9], font=font, fill=1)
+                            draw.text((right_pane_start, 20), data["bssid"][9:], font=font, fill=1)
+                            draw.text((right_pane_start, 30), data["security"], font=font, fill=1)
+                            draw.text((right_pane_start, 40), "Clnts: " + data["client_count"], font=font, fill=1)
+                    except Exception as e:
+                        print(e)
             else:
                 draw.text((0, (location * 10) + 10), ap[0].decode("utf-8"), font=font, fill=255)
 

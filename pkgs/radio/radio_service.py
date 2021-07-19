@@ -22,7 +22,9 @@ class RadioService:
 
     @staticmethod
     def cycle_channel(uid, mod):
+        print(uid)
         (channellist, hopping, channel) = RadioService.antenna_info(uid)
+        print(channellist, hopping, channel)
         channels = channellist.split(b",")
         if len(channels) > 0:
             if hopping != b"0":
