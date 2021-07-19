@@ -7,10 +7,7 @@ import subprocess
 import adafruit_ssd1306
 from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
-
-from pkgs.mac.mac_vendor_lookup import MacLookup
-
-mac_tool = MacLookup()
+from pkgs.wifi_client.wifi_client_service import WifiClientService
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -89,7 +86,6 @@ redraw = True
 
 # last ap list
 ap_list = []
-clients_list = []
 
 # last update time
 last_update = 0
@@ -131,84 +127,9 @@ def pi_sniff_command(command, get_response):
 
 
 ##
-# Issue a deauth command to a client on a particular AP
+# Services
 ##
-def deauth(mac, station_bssid, iface="wlan0mon"):
-    subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
-
-
-##
-# Get list of clients
-##
-def get_client_list():
-    clients_raw = pi_sniff_command(b"c", True)
-    if clients_raw is not None:
-        clients = clients_raw.splitlines()
-        return clients[:len(clients_list) - 1]
-    else:
-        return []
-
-
-##
-# Refresh the global client list variable
-##
-def refresh_client_list():
-    global clients_list
-    clients_list = get_client_list()
-
-
-##
-# Returns an array [0 = RSSI, 1 = Station BSSID]
-##
-def get_client_info(client):
-    data = pi_sniff_command(b"c" + client, True)
-    return_array = []
-    if data is not None:
-        for datum in data.split(b","):
-            return_array.append(datum.decode("utf-8"))
-
-    return return_array
-
-
-##
-# Get the station bssid for a client
-##
-def get_client_station_bssid(client):
-    data = get_client_info(client)
-    return data[1]
-
-
-##
-# Get the rssi for a client
-##
-def get_client_rssi(client):
-    data = get_client_info(client)
-    return data[0]
-
-
-##
-# Safely get the client vendor, or None if none are found
-##
-def get_client_vendor(mac):
-    try:
-        return mac_tool.lookup(mac)
-    except:
-        return None
-
-
-##
-# Gets the proper display name for a client (<Vendor[0:8]>:<Last 3 Bytes of MAC>)
-##
-def get_client_display_name(mac):
-    vendor = get_client_vendor(mac)
-    if vendor is not None:
-        vendor_prefix = vendor[0:8]
-        while len(vendor_prefix) < 9:
-            vendor_prefix += ':'
-        mac_suffix = mac[9:]
-        return vendor_prefix + mac_suffix
-    else:
-        return mac
+client_service = WifiClientService(pi_sniff_command)
 
 
 ##
@@ -613,10 +534,9 @@ def do_gps_view():
 def do_client_view():
     global redraw
     global selected_client
-    global clients_list
 
     if not button_D.value:  # down arrow
-        if selected_client < len(clients_list):
+        if selected_client < len(client_service.get_clients()):
             redraw = True
             selected_client = selected_client + 1
     elif not button_U.value:  # up arrow
@@ -625,14 +545,10 @@ def do_client_view():
             redraw = True
     elif not button_B.value:
         if selected_client > 0:
-            client = clients_list[selected_client - 1]
-            selected_station_bssid = get_client_station_bssid(client)
-            selected_mac = client.decode("utf-8")
-            if selected_station_bssid is not None:
-                deauth(selected_mac, selected_station_bssid)
+            client_service.deauth_at_index(selected_client - 1)
 
     if redraw is True and selected_client == 0:
-        refresh_client_list()
+        client_service.refresh_clients()
 
     if redraw is True:
         # divide screen
@@ -647,13 +563,14 @@ def do_client_view():
             i = 0
 
         location = 0
-        while location < 5 and i < len(clients_list):
-            mac_address = clients_list[i].decode("utf-8")
-            display_name = get_client_display_name(mac_address)
+        while location < 5 and i < len(client_service.get_clients()):
+            client = client_service.get(i)
+            mac_address = client.decode("utf-8")
+            display_name = client_service.get_client_display_name(mac_address)
             if selected_client == (i + 1):
                 draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
                 draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
-                data = pi_sniff_command(b"c" + clients_list[i], True)
+                data = pi_sniff_command(b"c" + client, True)
                 if data is not None:
                     split_info = data.split(b",")
                     station_bssid = split_info[1].decode("utf-8")
