@@ -131,6 +131,87 @@ def pi_sniff_command(command, get_response):
 
 
 ##
+# Issue a deauth command to a client on a particular AP
+##
+def deauth(mac, station_bssid, iface="wlan0mon"):
+    subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
+
+
+##
+# Get list of clients
+##
+def get_client_list():
+    clients_raw = pi_sniff_command(b"c", True)
+    if clients_raw is not None:
+        clients = clients_raw.splitlines()
+        return clients[:len(clients_list) - 1]
+    else:
+        return []
+
+
+##
+# Refresh the global client list variable
+##
+def refresh_client_list():
+    global clients_list
+    clients_list = get_client_list()
+
+
+##
+# Returns an array [0 = RSSI, 1 = Station BSSID]
+##
+def get_client_info(client):
+    data = pi_sniff_command(b"c" + client, True)
+    return_array = []
+    if data is not None:
+        for datum in data.split(b","):
+            return_array.append(datum.decode("utf-8"))
+
+    return return_array
+
+
+##
+# Get the station bssid for a client
+##
+def get_client_station_bssid(client):
+    data = get_client_info(client)
+    return data[1]
+
+
+##
+# Get the rssi for a client
+##
+def get_client_rssi(client):
+    data = get_client_info(client)
+    return data[0]
+
+
+##
+# Safely get the client vendor, or None if none are found
+##
+def get_client_vendor(mac):
+    try:
+        return mac_tool.lookup
+    except:
+        return None
+
+
+##
+# Gets the proper display name for a client (<Vendor[0:8]>:<Last 3 Bytes of MAC>)
+##
+def get_client_display_name(mac):
+    vendor = get_client_vendor(mac)
+    if vendor is not None:
+        vendor_prefix = vendor[0:8]
+        while len(vendor_prefix) < 9:
+            vendor_prefix += ':'
+        mac_suffix = mac[9:]
+        return vendor_prefix + mac_suffix
+    else:
+        return mac
+
+
+##
 # Issue a generic kismet command (e.g. shutdown) and return
 ##
 def do_kismet_command(command):
@@ -544,26 +625,21 @@ def do_client_view():
             redraw = True
     elif not button_B.value:
         if selected_client > 0:
-            # grab the client's bssid
-            data = pi_sniff_command(b"c" + clients_list[selected_client - 1], True)
-            if data is not None:
-                split_info = data.split(b",")
-                subprocess.run(["aireplay-ng", "-0", "1", "-a", split_info[1].decode("utf-8"), "-c",
-                                clients_list[selected_client - 1].decode("utf-8"), "wlan0mon"])
+            client = clients_list[selected_client - 1]
+            selected_station_bssid = get_client_station_bssid(client)
+            selected_mac = client.decode("utf-8")
+            if selected_station_bssid is not None:
+                deauth(selected_mac, selected_station_bssid)
 
     if redraw is True and selected_client == 0:
-        # get the list from the back end
-        clients = pi_sniff_command(b"c", True)
-        if clients is not None:
-            clients_list = clients.splitlines()
-            # trim the \n\n
-            clients_list = clients_list[:len(clients_list) - 1]
+        refresh_client_list()
 
     if redraw is True:
         # divide screen
+        info_box_start_x = width / 2 + 22
         draw.rectangle((0, 0, width, 10), outline=1, fill=1)
         draw.text(((width / 2) - 30, 0), "Client View", fill=0)
-        draw.line((width / 2 + 22, 10, width / 2 + 22, height), fill=1)
+        draw.line((info_box_start_x, 10, info_box_start_x, height), fill=1)
 
         if selected_client > 3:
             i = selected_client - 4
@@ -573,19 +649,8 @@ def do_client_view():
         location = 0
         while location < 5 and i < len(clients_list):
             mac_address = clients_list[i].decode("utf-8")
-            display_name = mac_address
-            try:
-                vendor = re.sub(r'\W+', '', mac_tool.lookup(mac_address))
-                vendor_prefix = vendor[0:8]
-                while len(vendor_prefix) < 9:
-                    vendor_prefix += ':'
-                mac_suffix = mac_address[9:]
-                display_name = vendor_prefix + mac_suffix
-            except:
-                display_name = mac_address
-                print('Couldn\'t find vendor mac for ' + mac_address)
+            display_name = get_client_display_name(mac_address)
             if selected_client == (i + 1):
-                info_box_start_x = width / 2 + 22
                 draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
                 draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
                 data = pi_sniff_command(b"c" + clients_list[i], True)
@@ -594,7 +659,7 @@ def do_client_view():
                     station_bssid = split_info[1].decode("utf-8")
                     rssi = split_info[0].decode("utf-8")
 
-                    draw.text((info_box_start_x, 10), "Sig: " + rssi, font=font, fill=1)
+                    draw.text((info_box_start_x, 10), "rssi " + rssi, font=font, fill=1)
                     draw.text((info_box_start_x, 20), station_bssid[:9], font=font, fill=1)
                     draw.text((info_box_start_x, 30), station_bssid[9:], font=font, fill=1)
                     draw.text((info_box_start_x, 40), mac_address[:9], font=font, fill=1)
