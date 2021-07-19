@@ -8,9 +8,9 @@ import adafruit_ssd1306
 from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
 
-from pkgs.mac import mac_vendor_lookup
+from pkgs.mac.mac_vendor_lookup import MacLookup
 
-mac_tool = mac_vendor_lookup.MacLookup()
+mac_tool = MacLookup()
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -23,6 +23,9 @@ mac_tool = mac_vendor_lookup.MacLookup()
 ###
 # Hooray for globals!
 ###
+
+socket_ip = "127.0.0.1"
+socket_port = 1270
 
 # Create the I2C interface.
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -120,7 +123,7 @@ def pi_sniff_command(command, get_response):
 
     pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
     if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-        backend_sock.sendto(command + b"\n", ("127.0.0.1", 1270))
+        backend_sock.sendto(command + b"\n", (socket_ip, 1270))
         if get_response is True:
             data = backend_sock.recvfrom(65535)[0]
 
@@ -132,7 +135,7 @@ def pi_sniff_command(command, get_response):
 ##
 def do_kismet_command(command):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("127.0.0.1", 2501))
+    s.connect((socket_ip, 2501))
     s.sendall(b"!0 " + command + b"\n")
     s.close()
 
@@ -143,7 +146,7 @@ def do_kismet_command(command):
 ##
 def kismet_ant_info(uuid):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("127.0.0.1", 2501))
+    s.connect((socket_ip, 2501))
     s.sendall(b"!0 ENABLE SOURCE uuid,channellist,hop,channel\n")
     data = b""
 
@@ -168,7 +171,7 @@ def kismet_ant_info(uuid):
 ##
 def kismet_set_channel(uuid, channel):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("127.0.0.1", 2501))
+    s.connect((socket_ip, 2501))
     if channel == b"0":
         s.sendall(b"!0 HOPSOURCE " + uuid + b" HOP 3\n")
     else:
@@ -281,9 +284,14 @@ def do_status_view():
         pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
         if pi_sniffer.stdout.find(b"pi_sniffer") == -1:
             redraw = True
-            subprocess.Popen(
-                ["/home/pi/pi_sniffer/build/pi_sniffer", "-c", "/home/pi/pi_sniffer/pi_sniffer.conf", "-k", "127.0.0.1",
-                 "-p", "3501"])
+            subprocess.Popen([
+                "/home/pi/pi_sniffer/build/pi_sniffer",
+                "-c", "/home/pi/pi_sniffer/pi_sniffer.conf",
+                "-k",
+                socket_ip,
+                "-p",
+                "3501"
+            ])
     elif not button_A.value:
         # shutdown kismet and pi sniffer
         redraw = True
@@ -342,16 +350,17 @@ def do_overview():
         overview_stats = pi_sniff_command(b"o", True)
         if overview_stats is not None:
             stats = overview_stats.split(b",")
+            second_pane_start_x = width / 2 + 2
             draw.text((0, 10), "Time: " + stats[0].decode("utf-8"), font=font, fill=1)
             draw.text((0, 20), "APs: " + stats[1].decode("utf-8"), font=font, fill=1)
             draw.text((0, 30), "Open: " + stats[2].decode("utf-8"), font=font, fill=1)
             draw.text((0, 40), "WEP: " + stats[3].decode("utf-8"), font=font, fill=1)
             draw.text((0, 50), "WPA: " + stats[4].decode("utf-8"), font=font, fill=1)
-            draw.text((width / 2 + 2, 10), "Pkts: " + stats[5].decode("utf-8"), font=font, fill=1)
-            draw.text((width / 2 + 2, 20), "Bcns: " + stats[6].decode("utf-8"), font=font, fill=1)
-            draw.text((width / 2 + 2, 30), "Data: " + stats[7].decode("utf-8"), font=font, fill=1)
-            draw.text((width / 2 + 2, 40), "Enc: " + stats[8].decode("utf-8"), font=font, fill=1)
-            draw.text((width / 2 + 2, 50), "EAPOL: " + stats[9].decode("utf-8"), font=font, fill=1)
+            draw.text((second_pane_start_x, 10), "Pkts: " + stats[5].decode("utf-8"), font=font, fill=1)
+            draw.text((second_pane_start_x, 20), "Bcns: " + stats[6].decode("utf-8"), font=font, fill=1)
+            draw.text((second_pane_start_x, 30), "Data: " + stats[7].decode("utf-8"), font=font, fill=1)
+            draw.text((second_pane_start_x, 40), "Enc: " + stats[8].decode("utf-8"), font=font, fill=1)
+            draw.text((second_pane_start_x, 50), "EAPOL: " + stats[9].decode("utf-8"), font=font, fill=1)
 
 
 ##
@@ -563,21 +572,35 @@ def do_client_view():
 
         location = 0
         while location < 5 and i < len(clients_list):
+            mac_address = clients_list[i].decode("utf-8")
+            display_name = mac_address
+            try:
+                vendor = re.sub(r'\W+', '', mac_tool.lookup(mac_address))
+                vendor_prefix = vendor[0:8]
+                while len(vendor_prefix) < 9:
+                    vendor_prefix += ':'
+                mac_suffix = mac_address[9:]
+                display_name = vendor_prefix + mac_suffix
+            except:
+                display_name = mac_address
+                print('Couldn\'t find vendor mac for ' + mac_address)
             if selected_client == (i + 1):
-                draw.rectangle((0, (location * 10) + 10, width / 2 + 22, (location * 10) + 20), outline=1, fill=1)
-                draw.text((0, (location * 10) + 10), clients_list[i].decode("utf-8"), font=font, fill=0)
+                info_box_start_x = width / 2 + 22
+                draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
+                draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
                 data = pi_sniff_command(b"c" + clients_list[i], True)
                 if data is not None:
                     split_info = data.split(b",")
-                    vendor = mac_tool.lookup(clients_list[i].decode("utf-8"))
-                    draw.text((width / 2 + 22, 10), split_info[1].decode("utf-8")[:9], font=font, fill=1)
-                    draw.text((width / 2 + 22, 20), split_info[1].decode("utf-8")[9:], font=font, fill=1)
-                    draw.text((width / 2 + 22, 30), "Sig: " + split_info[0].decode("utf-8"), font=font, fill=1)
-                    draw.text((width / 2 + 22, 40), vendor[:9], font=font, fill=1)
-                    draw.text((width / 2 + 22, 50), vendor[8:17], font=font, fill=1)
+                    station_bssid = split_info[1].decode("utf-8")
+                    rssi = split_info[0].decode("utf-8")
 
+                    draw.text((info_box_start_x, 10), "Sig: " + rssi, font=font, fill=1)
+                    draw.text((info_box_start_x, 20), station_bssid[:9], font=font, fill=1)
+                    draw.text((info_box_start_x, 30), station_bssid[9:], font=font, fill=1)
+                    draw.text((info_box_start_x, 40), mac_address[:9], font=font, fill=1)
+                    draw.text((info_box_start_x, 50), mac_address[9:], font=font, fill=1)
             else:
-                draw.text((0, (location * 10) + 10), clients_list[i].decode("utf-8"), font=font, fill=255)
+                draw.text((0, (location * 10) + 10), display_name, font=font, fill=255)
 
             i = i + 1
             location = location + 1
