@@ -191,7 +191,7 @@ def get_client_rssi(client):
 ##
 def get_client_vendor(mac):
     try:
-        return mac_tool.lookup
+        return mac_tool.lookup(mac)
     except:
         return None
 
