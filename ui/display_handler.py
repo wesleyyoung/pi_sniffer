@@ -289,25 +289,26 @@ def do_ant_view():
         redraw = True
 
     if redraw:
+        half_width = width / 2
+        right_pane_start = half_width + 2
         draw.rectangle((0, 0, width, 10), outline=1, fill=1)
-        draw.text(((width / 2) - 8, 0), "Antenna", fill=0)
-        draw.line((width / 2, 10, width / 2, height), fill=1)
-        right_pane_start = width / 2 + 2
+        draw.text((half_width - 8, 0), "Antenna", fill=0)
+        draw.line((half_width, 10, half_width, height), fill=1)
+
         iface = ""
-
-        if selected_ant == 1:
-            iface = "wlan0mon"
-            draw.rectangle((0, 10, width / 2, 20), outline=1, fill=1)
-            draw.text((0, 10), "wlan0mon", font=font, fill=0)
-        else:
-            draw.text((0, 10), "wlan0mon", font=font, fill=1)
-
-        if selected_ant == 2:
-            iface = "wlan1mon"
-            draw.rectangle((0, 20, width / 2, 30), outline=1, fill=1)
-            draw.text((0, 20), "wlan1mon", font=font, fill=0)
-        else:
-            draw.text((0, 20), "wlan1mon", font=font, fill=1)
+        ifaces = ["wlan0mon", "wlan1mon"]
+        iface_list_height = 10
+        iface_cursor_start = iface_list_height
+        iface_index = 1
+        for possible_iface in ifaces:
+            if selected_ant == iface_index:
+                iface = possible_iface
+                draw.rectangle((0, iface_cursor_start, half_width, iface_cursor_start + iface_list_height), outline=1, fill=1)
+                draw.text((0, iface_cursor_start), possible_iface, font=font, fill=0)
+            else:
+                draw.text((0, iface_cursor_start), possible_iface, font=font, fill=1)
+            iface_cursor_start += iface_list_height
+            iface_index += 1
 
         if iface is not "":
             if RadioService.is_antenna_running(iface) is False:
