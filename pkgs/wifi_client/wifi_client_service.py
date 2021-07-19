@@ -2,16 +2,15 @@ import re
 import subprocess
 
 from pkgs.mac.mac_vendor_lookup import MacLookup
+from pkgs.command.command_service import CommandService
 
 
 class WifiClientService:
-    pi_sniff_command = None
     clients = []
     mac_tool = MacLookup()
 
-    def __init__(self, pi_sniff_command):
-        self.foo = ""
-        self.pi_sniff_command = pi_sniff_command
+    def __init__(self):
+        self.clients = []
 
     def deauth(self, mac, station_bssid, iface="wlan0mon"):
         subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
@@ -33,7 +32,7 @@ class WifiClientService:
         return self.clients
 
     def get_clients_from_socket(self):
-        clients_raw = self.pi_sniff_command(b"c", True)
+        clients_raw = CommandService.run(b"c", True)
         if clients_raw is not None:
             clients = clients_raw.splitlines()
             return clients[:len(clients) - 1]
@@ -41,10 +40,10 @@ class WifiClientService:
             return []
 
     def refresh_clients(self):
-        self.clients = self.get_clients()
+        self.clients = self.get_clients_from_socket()
 
     def get_client_info(self, client):
-        data = self.pi_sniff_command(b"c" + client, True)
+        data = CommandService.run(b"c" + client, True)
         return_array = []
         if data is not None:
             for datum in data.split(b","):

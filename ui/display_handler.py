@@ -8,6 +8,8 @@ import adafruit_ssd1306
 from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
 from pkgs.wifi_client.wifi_client_service import WifiClientService
+from pkgs.wifi_ap.wifi_ap_service import WifiApService
+from pkgs.command.command_service import CommandService
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -21,8 +23,8 @@ from pkgs.wifi_client.wifi_client_service import WifiClientService
 # Hooray for globals!
 ###
 
+# Socket endpoint address
 socket_ip = "127.0.0.1"
-socket_port = 1270
 
 # Create the I2C interface.
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -72,6 +74,9 @@ rotate = 8  # place holder
 
 # ap view
 selected_ap = 0
+ap_view_type_radio_info = 2
+ap_view_type_station_info = 1
+ap_view_type = ap_view_type_station_info
 selected_ant = 0
 selected_client = 0
 
@@ -83,9 +88,6 @@ locked = False
 
 # do we need to update the view?
 redraw = True
-
-# last ap list
-ap_list = []
 
 # last update time
 last_update = 0
@@ -102,83 +104,15 @@ flush_time = time.time()
 # the font all text writing will use
 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
 
-# create a UDP socket to talk to pi_sniffer engine
-backend_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-
 ###
 # Globals over. I am appropriately embarrassed.
-### 
-
-##
-# Issue a command to the pi sniffer UDP interface. Not all commands require
-# responses (e.g. 'S\n' for shutdown does not require a response)
-##
-def pi_sniff_command(command, get_response):
-    data = None
-
-    pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
-    if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-        backend_sock.sendto(command + b"\n", (socket_ip, 1270))
-        if get_response is True:
-            data = backend_sock.recvfrom(65535)[0]
-
-    return data
-
+###
 
 ##
 # Services
 ##
-client_service = WifiClientService(pi_sniff_command)
-
-
-##
-# Issue a generic kismet command (e.g. shutdown) and return
-##
-def do_kismet_command(command):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((socket_ip, 2501))
-    s.sendall(b"!0 " + command + b"\n")
-    s.close()
-
-
-##
-# Grab the current channel list, hop status, and current channel for the
-# provided antenna (uuid defined in kismet.conf. wlan0 == 01 and wlan1 == 02)
-##
-def kismet_ant_info(uuid):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((socket_ip, 2501))
-    s.sendall(b"!0 ENABLE SOURCE uuid,channellist,hop,channel\n")
-    data = b""
-
-    try:
-        data = s.recv(1024)
-        s.close()
-    except:
-        pass
-
-    channel_info = re.search(b"SOURCE: " + uuid + b" ([0-9,]+) ([0-9]+) ([0-9]+)", data)
-    if channel_info is None:
-        return b'', b'', b''
-    else:
-        # channel list, hop status, current channel
-        return channel_info.group(1), channel_info.group(2), channel_info.group(3)
-
-    ##
-
-
-# Set the channel of the provided antenna (uuid defined in kismet.conf). If
-# the provided channel == "0" than switch to channel hopping.
-##
-def kismet_set_channel(uuid, channel):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((socket_ip, 2501))
-    if channel == b"0":
-        s.sendall(b"!0 HOPSOURCE " + uuid + b" HOP 3\n")
-    else:
-        s.sendall(b"!0 HOPSOURCE " + uuid + b" LOCK " + channel + b"\n")
-    s.close()
+client_service = WifiClientService()
+ap_service = WifiApService()
 
 
 ##
@@ -195,7 +129,7 @@ def do_watchdog():
 
     if (current_time - 60) > watch_dog:
         watch_dog = current_time
-        overview_stats = pi_sniff_command(b"o", True)
+        overview_stats = CommandService.run(b"o", True)
         if overview_stats is not None:
             stats = overview_stats.split(b",")
             if last_stats is None:
@@ -206,7 +140,7 @@ def do_watchdog():
                 last_stats = None
                 kismet = subprocess.run(["ps", "-C", "kismet_server"], capture_output=True)
                 if kismet.stdout.find(b"kismet_server") != -1:
-                    do_kismet_command(b"SHUTDOWN")
+                    CommandService.do_kismet_command(b"SHUTDOWN")
                     subprocess.run(["airmon-ng", "stop", "wlan0mon"])
                     subprocess.run(["airmon-ng", "stop", "wlan1mon"])
                     time.sleep(3)
@@ -220,7 +154,7 @@ def do_watchdog():
         # only send the command if it's running
         pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
         if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-            pi_sniff_command(b"f", False)
+            CommandService.run(b"f", False)
 
 
 ###
@@ -270,7 +204,7 @@ def do_status_view():
 
     if not button_A.value and not button_B.value:
         # attempt a clean shutdown
-        pi_sniff_command(b"s", False)
+        CommandService.run(b"s", False)
         time.sleep(5)
         subprocess.run(["shutdown", "-h", "now"])
         return False
@@ -297,10 +231,10 @@ def do_status_view():
     elif not button_A.value:
         # shutdown kismet and pi sniffer
         redraw = True
-        pi_sniff_command(b"s", False)
+        CommandService.run(b"s", False)
         kismet = subprocess.run(["ps", "-C", "kismet_server"], capture_output=True)
         if kismet.stdout.find(b"kismet_server") != -1:
-            do_kismet_command(b"SHUTDOWN")
+            CommandService.do_kismet_command(b"SHUTDOWN")
             subprocess.run(["airmon-ng", "stop", "wlan0mon"])
             subprocess.run(["airmon-ng", "stop", "wlan1mon"])
 
@@ -349,7 +283,7 @@ def do_overview():
         draw.rectangle((0, 0, width, 10), outline=1, fill=1)
         draw.text(((width / 2) - 16, 0), "Overview", fill=0)
         draw.line((width / 2, 10, width / 2, height), fill=1)
-        overview_stats = pi_sniff_command(b"o", True)
+        overview_stats = CommandService.run(b"o", True)
         if overview_stats is not None:
             stats = overview_stats.split(b",")
             second_pane_start_x = width / 2 + 2
@@ -397,18 +331,18 @@ def do_ant_view():
             # ignore
             return
 
-        (channellist, hopping, channel) = kismet_ant_info(uid)
+        (channellist, hopping, channel) = CommandService.kismet_ant_info(uid)
         channels = channellist.split(b",")
         if len(channels) > 0:
             if hopping != b"0":
-                kismet_set_channel(uid, channels[0])
+                CommandService.kismet_set_channel(uid, channels[0])
             else:
                 current = channels.index(channel)
                 current = current + 1
                 if current >= len(channels):
-                    kismet_set_channel(uid, b"0")
+                    CommandService.kismet_set_channel(uid, b"0")
                 else:
-                    kismet_set_channel(uid, channels[current])
+                    CommandService.kismet_set_channel(uid, channels[current])
 
             # kismet needs a little before we slam it with more requests
             time.sleep(0.3)
@@ -427,7 +361,7 @@ def do_ant_view():
             if wlan0mon.stdout.find(b"RUNNING,PROMISC") == -1:
                 draw.text((width / 2 + 2, 10), "Disabled", font=font, fill=1)
             else:
-                (channellist, hopping, channel) = kismet_ant_info(b"00000000-0000-0000-0000-000000000001")
+                (channellist, hopping, channel) = CommandService.kismet_ant_info(b"00000000-0000-0000-0000-000000000001")
                 if hopping == b'':
                     draw.text((width / 2 + 2, 10), "Channel:\nTransitioning", font=font, fill=1)
                 elif hopping != b"0":
@@ -445,7 +379,7 @@ def do_ant_view():
             if wlan1mon.stdout.find(b"RUNNING,PROMISC") == -1:
                 draw.text((width / 2 + 2, 10), "Disabled", font=font, fill=1)
             else:
-                (channellist, hopping, channel) = kismet_ant_info(b"00000000-0000-0000-0000-000000000002")
+                (channellist, hopping, channel) = CommandService.kismet_ant_info(b"00000000-0000-0000-0000-000000000002")
                 if hopping == b'':
                     draw.text((width / 2 + 2, 10), "Channel:\nTransitioning", font=font, fill=1)
                 elif hopping != b"0":
@@ -570,7 +504,7 @@ def do_client_view():
             if selected_client == (i + 1):
                 draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
                 draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
-                data = pi_sniff_command(b"c" + client, True)
+                data = CommandService.run(b"c" + client, True)
                 if data is not None:
                     split_info = data.split(b",")
                     station_bssid = split_info[1].decode("utf-8")
@@ -591,22 +525,26 @@ def do_client_view():
 def do_ap_view():
     global redraw
     global selected_ap
-    global ap_list
+    global ap_view_type
+    global ap_view_type_station_info
+    global ap_view_type_radio_info
 
     if not button_D.value:  # down arrow
-        if selected_ap < len(ap_list):
+        if selected_ap < len(ap_service.get_ap_list()):
             redraw = True
             selected_ap = selected_ap + 1
     elif not button_U.value:  # up arrow
         if selected_ap > 0:
             selected_ap = selected_ap - 1
             redraw = True
-    elif redraw == True and selected_ap == 0:
-        # get the list from the back end
-        access_points = pi_sniff_command(b"l", True)
-        if access_points is not None:
-            ap_list = access_points.splitlines()
-            ap_list = ap_list[:len(ap_list) - 1]
+    elif not button_B.value:
+        if ap_view_type == ap_view_type_station_info:
+            ap_view_type = ap_view_type_radio_info
+        else:
+            ap_view_type = ap_view_type_station_info
+        redraw = True
+    elif redraw is True and selected_ap == 0:
+        ap_service.refresh_ap_list()
 
     if redraw:
         # divide screen
@@ -621,8 +559,8 @@ def do_ap_view():
             i = 0
 
         location = 0
-        while location < 5 and i < len(ap_list):
-            ap = ap_list[i].split(b",")
+        while location < 5 and i < len(ap_service.get_ap_list()):
+            ap = ap_service.get(i).split(b",")
             if len(ap[0]) > 11:
                 shorten = ap[0][:8]
                 shorten = shorten + b"..."
@@ -632,15 +570,17 @@ def do_ap_view():
                 draw.rectangle((0, (location * 10) + 10, width / 2, (location * 10) + 20), outline=1, fill=1)
                 draw.text((0, (location * 10) + 10), ap[0].decode("utf-8"), font=font, fill=0)
 
-                data = pi_sniff_command(b"r" + ap[1], True)
+                data = ap_service.get_ap_info(ap)
                 if data is not None:
-                    split_info = data.split(b",")
-                    draw.text((width / 2 + 2, 10), ap[1].decode("utf-8")[:9], font=font, fill=1)
-                    draw.text((width / 2 + 2, 20), ap[1].decode("utf-8")[9:], font=font, fill=1)
-                    draw.text((width / 2 + 2, 30), "Ch: " + split_info[0].decode("utf-8"), font=font, fill=1)
-                    draw.text((width / 2 + 2, 40), split_info[1].decode("utf-8"), font=font, fill=1)
-                    draw.text((width / 2 + 2, 50), "Sig: " + split_info[2].decode("utf-8"), font=font, fill=1)
-                    draw.text((width / 2 + 2, 60), "Clnts: " + split_info[3].decode("utf-8"), font=font, fill=1)
+                    right_pane_start = width / 2 + 2
+                    if ap_view_type == ap_view_type_radio_info:
+                        draw.text((right_pane_start, 10), "Sig: " + data["rssi"], font=font, fill=1)
+                        draw.text((right_pane_start, 20), "Ch: " + data["channel"], font=font, fill=1)
+                    elif ap_view_type == ap_view_type_station_info:
+                        draw.text((right_pane_start, 10), data["bssid"][:9], font=font, fill=1)
+                        draw.text((right_pane_start, 20), data["bssid"][9:], font=font, fill=1)
+                        draw.text((right_pane_start, 30), data["security"], font=font, fill=1)
+                        draw.text((right_pane_start, 40), "Clnts: " + data["client_count"], font=font, fill=1)
             else:
                 draw.text((0, (location * 10) + 10), ap[0].decode("utf-8"), font=font, fill=255)
 
