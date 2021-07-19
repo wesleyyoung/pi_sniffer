@@ -10,6 +10,8 @@ from PIL import Image, ImageDraw, ImageFont
 from pkgs.wifi_client.wifi_client_service import WifiClientService
 from pkgs.wifi_ap.wifi_ap_service import WifiApService
 from pkgs.command.command_service import CommandService
+from pkgs.watchdog.watchdog_service import WatchdogService
+from pkgs.radio.radio_service import RadioService
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -93,14 +95,6 @@ redraw = True
 last_update = 0
 last_stats = None
 
-# observed some curious behavior from kismet. After many hours it sometimes
-# just stops sending data in the kismet packets. I'm 90% certain it isn't me.
-# who knows. Poor man's solution: watchdog that restarts kismet
-watch_dog = time.time()
-
-# flush output every five minutes just in case of catastrophic error
-flush_time = time.time()
-
 # the font all text writing will use
 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
 
@@ -113,48 +107,7 @@ font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
 ##
 client_service = WifiClientService()
 ap_service = WifiApService()
-
-
-##
-# Every 60 seconds check if kismet is still sending us data. I've observed it
-# sending us empty packets for some reason... If we observe that behavior just
-# restart it.
-#
-# Every 300 seconds tell pi_sniffer to flush output to disk.
-##
-def do_watchdog():
-    global watch_dog
-    global last_stats
-    global flush_time
-
-    if (current_time - 60) > watch_dog:
-        watch_dog = current_time
-        overview_stats = CommandService.run(b"o", True)
-        if overview_stats is not None:
-            stats = overview_stats.split(b",")
-            if last_stats is None:
-                last_stats = stats[5]
-            elif last_stats == stats[5]:
-                # we are either getting no data or kismet is behaving odd.
-                # knock it over and set it back up
-                last_stats = None
-                kismet = subprocess.run(["ps", "-C", "kismet_server"], capture_output=True)
-                if kismet.stdout.find(b"kismet_server") != -1:
-                    CommandService.do_kismet_command(b"SHUTDOWN")
-                    subprocess.run(["airmon-ng", "stop", "wlan0mon"])
-                    subprocess.run(["airmon-ng", "stop", "wlan1mon"])
-                    time.sleep(3)
-                    subprocess.Popen(["kismet_server", "-f", "/home/pi/kismet.conf", "-n", "--daemonize"])
-            else:
-                last_stats = stats[5]
-
-    # let's check if we should flush output too
-    if (current_time - 300) > flush_time:
-        flush_time = current_time
-        # only send the command if it's running
-        pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
-        if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-            CommandService.run(b"f", False)
+watchdog_service = WatchdogService()
 
 
 ###
@@ -316,78 +269,57 @@ def do_ant_view():
             redraw = True
     elif not button_B.value and selected_ant != 0:
         if selected_ant == 1:
-            wlan0mon = subprocess.run(["ifconfig", "wlan0mon"], capture_output=True)
-            if wlan0mon.stdout.find(b"RUNNING,PROMISC") == -1:
+            if RadioService.is_antenna_running("wlan0mon") is False:
                 # if the antenna doesn't exist do nothing
                 return
-            uid = b"00000000-0000-0000-0000-000000000001"
+            uid = RadioService.get_uid("wlan0mon")
         elif selected_ant == 2:
-            wlan1mon = subprocess.run(["ifconfig", "wlan1mon"], capture_output=True)
-            if wlan1mon.stdout.find(b"RUNNING,PROMISC") == -1:
+            if RadioService.is_antenna_running("wlan1mon") is False:
                 # if the antenna doesn't exist do nothing
                 return
-            uid = b"00000000-0000-0000-0000-000000000002"
+            uid = RadioService.get_uid("wlan1mon")
         else:
             # ignore
             return
 
-        (channellist, hopping, channel) = CommandService.kismet_ant_info(uid)
-        channels = channellist.split(b",")
-        if len(channels) > 0:
-            if hopping != b"0":
-                CommandService.kismet_set_channel(uid, channels[0])
-            else:
-                current = channels.index(channel)
-                current = current + 1
-                if current >= len(channels):
-                    CommandService.kismet_set_channel(uid, b"0")
-                else:
-                    CommandService.kismet_set_channel(uid, channels[current])
+        RadioService.cycle_channel_up(uid)
 
-            # kismet needs a little before we slam it with more requests
-            time.sleep(0.3)
-            redraw = True
+        # kismet needs a little before we slam it with more requests
+        time.sleep(0.3)
+        redraw = True
 
     if redraw:
         draw.rectangle((0, 0, width, 10), outline=1, fill=1)
         draw.text(((width / 2) - 8, 0), "Antenna", fill=0)
         draw.line((width / 2, 10, width / 2, height), fill=1)
+        right_pane_start = width / 2 + 2
+        iface = ""
 
         if selected_ant == 1:
+            iface = "wlan0mon"
             draw.rectangle((0, 10, width / 2, 20), outline=1, fill=1)
             draw.text((0, 10), "wlan0mon", font=font, fill=0)
-
-            wlan0mon = subprocess.run(["ifconfig", "wlan0mon"], capture_output=True)
-            if wlan0mon.stdout.find(b"RUNNING,PROMISC") == -1:
-                draw.text((width / 2 + 2, 10), "Disabled", font=font, fill=1)
-            else:
-                (channellist, hopping, channel) = CommandService.kismet_ant_info(b"00000000-0000-0000-0000-000000000001")
-                if hopping == b'':
-                    draw.text((width / 2 + 2, 10), "Channel:\nTransitioning", font=font, fill=1)
-                elif hopping != b"0":
-                    draw.text((width / 2 + 2, 10), "Channel:\nHopping", font=font, fill=1)
-                else:
-                    draw.text((width / 2 + 2, 10), "Channel:\n" + channel.decode("utf-8"), font=font, fill=1)
         else:
             draw.text((0, 10), "wlan0mon", font=font, fill=1)
 
         if selected_ant == 2:
+            iface = "wlan1mon"
             draw.rectangle((0, 20, width / 2, 30), outline=1, fill=1)
             draw.text((0, 20), "wlan1mon", font=font, fill=0)
-
-            wlan1mon = subprocess.run(["ifconfig", "wlan1mon"], capture_output=True)
-            if wlan1mon.stdout.find(b"RUNNING,PROMISC") == -1:
-                draw.text((width / 2 + 2, 10), "Disabled", font=font, fill=1)
-            else:
-                (channellist, hopping, channel) = CommandService.kismet_ant_info(b"00000000-0000-0000-0000-000000000002")
-                if hopping == b'':
-                    draw.text((width / 2 + 2, 10), "Channel:\nTransitioning", font=font, fill=1)
-                elif hopping != b"0":
-                    draw.text((width / 2 + 2, 10), "Channel:\nHopping", font=font, fill=1)
-                else:
-                    draw.text((width / 2 + 2, 10), "Channel:\n" + channel.decode("utf-8"), font=font, fill=1)
         else:
             draw.text((0, 20), "wlan1mon", font=font, fill=1)
+
+        if iface is not "":
+            if RadioService.is_antenna_running(iface) is False:
+                draw.text((right_pane_start, 10), "Disabled", font=font, fill=1)
+            else:
+                (channellist, hopping, channel) = RadioService.antenna_info(RadioService.get_uid(iface))
+                if hopping == b'':
+                    draw.text((right_pane_start, 10), "Channel:\nTransitioning", font=font, fill=1)
+                elif hopping != b"0":
+                    draw.text((right_pane_start, 10), "Channel:\nHopping", font=font, fill=1)
+                else:
+                    draw.text((right_pane_start, 10), "Channel:\n" + channel.decode("utf-8"), font=font, fill=1)
 
 
 ##
@@ -630,10 +562,10 @@ while True:
             locked = False
             redraw = True
         else:
-            current_time = time.time()
-            if (current_time - 6) > last_update:
+            watchdog_service.set_current_time(time.time())
+            if (watchdog_service.get_current_time() - 6) > last_update:
                 redraw = True
-            do_watchdog()
+            watchdog_service.do_watchdog()
             time.sleep(0.1)
             continue
 
@@ -642,12 +574,12 @@ while True:
 
     # see if we should be refreshing
     if not redraw:
-        current_time = time.time()
-        if (current_time - 6) > last_update:
+        watchdog_service.set_current_time(time.time())
+        if (watchdog_service.get_current_time() - 6) > last_update:
             redraw = True
 
         # while we have current time let's kick the dog
-        do_watchdog()
+        watchdog_service.do_watchdog()
 
     # we might draw! Create a blank canvas
     width = disp.width
