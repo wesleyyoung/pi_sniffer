@@ -1,35 +1,37 @@
 import re
 import subprocess
 
-from pkgs.mac.mac_vendor_lookup import MacLookup
+from pkgs.vendor.vendor_service import VendorService
 from pkgs.command.command_service import CommandService
+from operator import itemgetter
 
 
 class WifiClientService:
-    clients = []
-    mac_tool = MacLookup()
 
     def __init__(self):
-        self.clients = []
+        self.client_map = {}
 
     def deauth(self, mac, station_bssid, iface="wlan0mon"):
         subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
 
     def deauth_client(self, client):
-        station_bssid = self.get_client_station_bssid(client)
-        mac = client.decode("utf-8")
+        station_bssid = client['station_bssid']
+        mac = client['mac']
         if station_bssid is not None:
             self.deauth(mac, station_bssid)
 
     def deauth_at_index(self, index):
-        client = self.get(index)
+        client = self.get_index(index)
         self.deauth_client(client)
 
-    def get(self, index=0):
-        return self.clients[index]
+    def get_index(self, index=0):
+        return self.get_clients()[index]
+
+    def get(self, mac):
+        return self.client_map[mac]
 
     def get_clients(self):
-        return self.clients
+        return itemgetter(*list(self.client_map.keys()))(self.client_map)
 
     def get_clients_from_socket(self):
         clients_raw = CommandService.run(b"c", True)
@@ -40,39 +42,31 @@ class WifiClientService:
             return []
 
     def refresh_clients(self):
-        self.clients = self.get_clients_from_socket()
+        clients = self.get_clients_from_socket()
+        for client in clients:
+            mac = client.decode("utf-8").lower().strip()
+            self.client_map[mac] = self.get_client_info(client)
 
     def get_client_info(self, client):
-        data = CommandService.run(b"c" + client, True)
-        return_array = []
+        try:
+            client = client.decode('utf-8')
+        except (UnicodeDecodeError, AttributeError):
+            pass
+        data = CommandService.run(b"c" + str.encode(client), True)
+        mac = client.lower().strip()
         if data is not None:
-            for datum in data.split(b","):
-                return_array.append(datum.decode("utf-8"))
-
-        return return_array
+            data = data.split(b",")
+            return {
+                'name': VendorService.get_display_name(mac),
+                'mac': mac,
+                'rssi': data[0].decode("utf-8"),
+                'station_bssid': data[1].decode("utf-8")
+            }
 
     def get_client_station_bssid(self, client):
         data = self.get_client_info(client)
-        return data[1]
+        return data['station_bssid']
 
     def get_client_rssi(self, client):
         data = self.get_client_info(client)
-        return data[0]
-
-    def get_client_vendor(self, mac):
-        try:
-            return self.mac_tool.lookup(mac)
-        except:
-            return None
-
-    def get_client_display_name(self, mac):
-        vendor = self.get_client_vendor(mac)
-        if vendor is not None:
-            vendor = re.sub(r'\W+', '', vendor)
-            vendor_prefix = vendor[0:8]
-            while len(vendor_prefix) < 9:
-                vendor_prefix += ':'
-            mac_suffix = mac[9:]
-            return vendor_prefix + mac_suffix
-        else:
-            return mac
+        return data['rssi']

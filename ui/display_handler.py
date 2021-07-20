@@ -12,6 +12,8 @@ from pkgs.wifi_ap.wifi_ap_service import WifiApService
 from pkgs.command.command_service import CommandService
 from pkgs.watchdog.watchdog_service import WatchdogService
 from pkgs.radio.radio_service import RadioService
+from pkgs.vendor.vendor_service import VendorService
+from pkgs.display.display_service import DisplayService
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -80,7 +82,22 @@ ap_view_type_radio_info = 2
 ap_view_type_station_info = 1
 ap_view_type = ap_view_type_station_info
 selected_ant = 0
+
+# client view
 selected_client = 0
+client_view_type_bssid = 'BSSID'
+client_view_type_ssid = 'SSID'
+client_view_type_radio = 'RADIO'
+client_view_type_vendor = 'VENDOR'
+client_view_type_mac = 'MAC'
+client_view_pages = [
+    client_view_type_bssid,
+    client_view_type_ssid,
+    client_view_type_radio,
+    client_view_type_vendor,
+    client_view_type_mac
+]
+client_view_page_index = 0
 
 # current view
 current_view = status_view
@@ -303,7 +320,8 @@ def do_ant_view():
         for possible_iface in ifaces:
             if selected_ant == iface_index:
                 iface = possible_iface
-                draw.rectangle((0, iface_cursor_start, half_width, iface_cursor_start + iface_list_height), outline=1, fill=1)
+                draw.rectangle((0, iface_cursor_start, half_width, iface_cursor_start + iface_list_height), outline=1,
+                               fill=1)
                 draw.text((0, iface_cursor_start), possible_iface, font=font, fill=0)
             else:
                 draw.text((0, iface_cursor_start), possible_iface, font=font, fill=1)
@@ -401,6 +419,7 @@ def do_gps_view():
 def do_client_view():
     global redraw
     global selected_client
+    global client_view_page_index
 
     if not button_D.value:  # down arrow
         if selected_client < len(client_service.get_clients()):
@@ -412,7 +431,17 @@ def do_client_view():
             redraw = True
     elif not button_B.value:
         if selected_client > 0:
-            client_service.deauth_at_index(selected_client - 1)
+            try:
+                selected_client_record = client_service.get_index(selected_client - 1)
+                client_service.deauth_client(selected_client_record)
+            except Exception as e:
+                print(e)
+                pass
+    elif not button_A.value:
+        redraw = True
+        client_view_page_index += 1
+        if client_view_page_index >= len(client_view_pages):
+            client_view_page_index = 0
 
     if redraw is True and selected_client == 0:
         client_service.refresh_clients()
@@ -431,25 +460,78 @@ def do_client_view():
 
         location = 0
         while location < 5 and i < len(client_service.get_clients()):
-            client = client_service.get(i)
-            mac_address = client.decode("utf-8")
-            display_name = client_service.get_client_display_name(mac_address)
-            if selected_client == (i + 1):
-                draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
-                draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
-                data = CommandService.run(b"c" + client, True)
-                if data is not None:
-                    split_info = data.split(b",")
-                    station_bssid = split_info[1].decode("utf-8")
-                    rssi = split_info[0].decode("utf-8")
+            try:
+                client = client_service.get_index(i)
+                mac_address = client['mac']
+                display_name = client['name']
+                station_bssid = client['station_bssid']
+                rssi = client['rssi']
+                if selected_client == (i + 1):
+                    draw.rectangle((0, (location * 10) + 10, info_box_start_x, (location * 10) + 20), outline=1, fill=1)
+                    draw.text((0, (location * 10) + 10), display_name, font=font, fill=0)
 
-                    draw.text((info_box_start_x, 10), "rssi " + rssi, font=font, fill=1)
-                    draw.text((info_box_start_x, 20), station_bssid[:9], font=font, fill=1)
-                    draw.text((info_box_start_x, 30), station_bssid[9:], font=font, fill=1)
-                    draw.text((info_box_start_x, 40), mac_address[:9], font=font, fill=1)
-                    draw.text((info_box_start_x, 50), mac_address[9:], font=font, fill=1)
-            else:
-                draw.text((0, (location * 10) + 10), display_name, font=font, fill=255)
+                    if client is not None:
+                        client_view_title = client_view_pages[client_view_page_index]
+                        draw_title = False
+                        # BSSID
+                        if client_view_title == client_view_type_bssid:
+                            draw_title = True
+                            # Station BSSID
+                            draw.text((info_box_start_x, 20), station_bssid[:9], font=font, fill=1)
+                            draw.text((info_box_start_x, 30), station_bssid[9:], font=font, fill=1)
+
+                        # SSID
+                        elif client_view_title == client_view_type_ssid:
+                            draw_title = True
+                            ap = ap_service.get_ap_by_bssid(station_bssid)
+                            if ap is not None:
+                                line_chunks = DisplayService.get_paragraph(8, 4, ap['ssid'], True)
+                                start_line_y = 20
+                                for chunk in line_chunks:
+                                    draw.text((info_box_start_x, start_line_y), chunk, font=font, fill=1)
+                                    start_line_y += 10
+                            else:
+                                print('No AP found for BSSID ' + station_bssid)
+
+                        # Radio
+                        elif client_view_title == client_view_type_radio:
+                            draw_title = True
+                            draw.text((info_box_start_x, 20), "Sig. " + rssi, font=font, fill=1)
+                            ap = ap_service.get_ap_by_bssid(station_bssid)
+                            if ap is not None:
+                                data = ap_service.get_ap_info(ap)
+                                try:
+                                    draw.text((info_box_start_x, 30), "Ch. " + data["channel"], font=font, fill=1)
+                                except:
+                                    draw.text((info_box_start_x, 30), "Ch. Error", font=font, fill=1)
+
+                        # Vendor
+                        elif client_view_title == client_view_type_vendor:
+                            try:
+                                vendor = VendorService.get_vendor(mac_address)
+                                vendor_chunks = DisplayService.get_paragraph(8, 4, vendor)
+                                start_line_y = 10
+                                for chunk in vendor_chunks:
+                                    draw.text((info_box_start_x, start_line_y), chunk, font=font, fill=1)
+                                    start_line_y += 10
+                            except:
+                                draw.text((info_box_start_x, 20), "Error", font=font, fill=1)
+
+                        # MAC
+                        elif client_view_title == client_view_type_mac:
+                            draw_title = True
+                            # MAC Address
+                            draw.text((info_box_start_x, 20), mac_address[:9], font=font, fill=1)
+                            draw.text((info_box_start_x, 30), mac_address[9:], font=font, fill=1)
+
+                        if draw_title:
+                            # Info Window Title
+                            draw.text((info_box_start_x, 10), client_view_title, font=font, fill=1)
+
+                else:
+                    draw.text((0, (location * 10) + 10), display_name, font=font, fill=255)
+            except:
+                pass
 
             i = i + 1
             location = location + 1
@@ -470,7 +552,7 @@ def do_ap_view():
         if selected_ap > 0:
             selected_ap = selected_ap - 1
             redraw = True
-    elif not button_B.value:
+    elif not button_A.value:
         if ap_view_type == ap_view_type_station_info:
             ap_view_type = ap_view_type_radio_info
         else:
@@ -493,15 +575,15 @@ def do_ap_view():
 
         location = 0
         while location < 5 and i < len(ap_service.get_ap_list()):
-            ap = ap_service.get(i).split(b",")
-            if len(ap[0]) > 11:
-                shorten = ap[0][:8]
-                shorten = shorten + b"..."
-                ap[0] = shorten
+            ap = ap_service.get_index(i)
+            display_ssid = ap['ssid']
+            if len(display_ssid) > 12:
+                display_ssid = display_ssid[:9]
+                display_ssid = display_ssid + ".."
 
             if selected_ap == (i + 1):
                 draw.rectangle((0, (location * 10) + 10, width / 2, (location * 10) + 20), outline=1, fill=1)
-                draw.text((0, (location * 10) + 10), ap[0].decode("utf-8"), font=font, fill=0)
+                draw.text((0, (location * 10) + 10), display_ssid, font=font, fill=0)
 
                 data = ap_service.get_ap_info(ap)
                 if data is not None:
@@ -510,15 +592,26 @@ def do_ap_view():
                         if ap_view_type == ap_view_type_radio_info:
                             draw.text((right_pane_start, 10), "Sig: " + data["rssi"], font=font, fill=1)
                             draw.text((right_pane_start, 20), "Ch: " + data["channel"], font=font, fill=1)
+                            draw.text((right_pane_start, 30), data["security"], font=font, fill=1)
+                            draw.text((right_pane_start, 40), "Clnts: " + data["client_count"], font=font, fill=1)
                         elif ap_view_type == ap_view_type_station_info:
                             draw.text((right_pane_start, 10), data["bssid"][:9], font=font, fill=1)
                             draw.text((right_pane_start, 20), data["bssid"][9:], font=font, fill=1)
-                            draw.text((right_pane_start, 30), data["security"], font=font, fill=1)
-                            draw.text((right_pane_start, 40), "Clnts: " + data["client_count"], font=font, fill=1)
+
+                            vendor = VendorService.get_vendor(data["bssid"])
+
+                            if vendor is not None:
+                                vendor_chunks = DisplayService.get_paragraph(12, 3, vendor)
+                                vendor_line_index = 0
+                                for vendor_chunk in vendor_chunks:
+                                    draw.text((right_pane_start, 30 + (vendor_line_index * 10)), vendor_chunk,
+                                              font=font, fill=1)
+                                    vendor_line_index += 1
+
                     except Exception as e:
                         print(e)
             else:
-                draw.text((0, (location * 10) + 10), ap[0].decode("utf-8"), font=font, fill=255)
+                draw.text((0, (location * 10) + 10), display_ssid, font=font, fill=255)
 
             i = i + 1
             location = location + 1

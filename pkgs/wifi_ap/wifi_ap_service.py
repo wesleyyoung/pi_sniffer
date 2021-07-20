@@ -1,17 +1,20 @@
 from pkgs.command.command_service import CommandService
+from operator import itemgetter
 
 
 class WifiApService:
-    ap_list = []
 
     def __init__(self):
-        self.ap_list = []
+        self.aps = {}
 
-    def get(self, index):
-        return self.ap_list[index]
+    def get(self, bssid):
+        return self.aps[bssid]
 
     def get_ap_list(self):
-        return self.ap_list
+        return itemgetter(*list(self.aps.keys()))(self.aps)
+
+    def get_index(self, index):
+        return self.get_ap_list()[index]
 
     def get_ap_list_from_socket(self):
         access_points = CommandService.run(b"l", True)
@@ -21,12 +24,27 @@ class WifiApService:
         return []
 
     def refresh_ap_list(self):
-        self.ap_list = self.get_ap_list_from_socket()
+        aps = self.get_ap_list_from_socket()
+        for ap in aps:
+            info = ap.decode('utf-8').split(',')
+            bssid = info[1].lower().strip()
+            ap = {
+                'bssid': bssid,
+                'ssid': info[0]
+            }
+            ap = self.get_ap_info(ap)
+            self.aps[bssid] = ap
+
+    def get_ap_by_bssid(self, bssid):
+        bssid = str(bssid).lower().strip()
+        try:
+            return self.get(bssid)
+        except Exception as e:
+            return None
 
     def get_ap_info(self, ap):
         try:
-            data = CommandService.run(b"r" + ap[1], True)
-            bssid = ap[1].decode("utf-8")
+            data = CommandService.run(b"r" + str.encode(ap['bssid']), True)
             if data is not None:
                 split_info = data.split(b",")
                 channel = split_info[0].decode("utf-8")
@@ -37,12 +55,13 @@ class WifiApService:
                     "channel": channel,
                     "security": security,
                     "rssi": rssi,
-                    "bssid": bssid,
+                    "bssid": ap['bssid'],
+                    "ssid": ap['ssid'],
                     "client_count": client_count
                 }
             return {}
-        except:
+        except Exception as e:
             return {}
 
     def get_ap_info_at_index(self, index=0):
-        return self.get_ap_info(self.get(index))
+        return self.get_ap_info(self.get_index(index))
