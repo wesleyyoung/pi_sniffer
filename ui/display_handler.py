@@ -142,6 +142,10 @@ def refresh_data(ap_service, client_service):
         time.sleep(6)
 
 
+def is_no_input_given():
+    return button_A.value and button_B.value and button_U.value and button_D.value and button_L.value and button_R.value
+
+
 def main_event_loop(ap_service, client_service):
     global last_update
     global locked
@@ -158,14 +162,13 @@ def main_event_loop(ap_service, client_service):
                 locked = False
             else:
                 watchdog_service.set_current_time(time.time())
-                if (watchdog_service.get_current_time() - 6) > last_update:
-                    redraw = True
                 watchdog_service.do_watchdog()
                 time.sleep(0.1)
                 continue
 
-        if button_A.value and button_B.value and button_U.value and button_D.value and button_L.value and button_R.value:
-            if (time.time() / 1000) - (last_update / 1000) <= 100:
+        # If no input
+        if is_no_input_given() and not last_update:
+            if (time.time() * 1000) - (last_update * 1000) <= 1200:
                 continue
 
         # check if the user is changing the view
