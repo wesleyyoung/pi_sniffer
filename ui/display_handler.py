@@ -1,9 +1,11 @@
 import socket
+from multiprocessing import Process, Manager
 import time
 import board
 import busio
 import re
 import subprocess
+import _thread
 import adafruit_ssd1306
 from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +16,9 @@ from pkgs.watchdog.watchdog_service import WatchdogService
 from pkgs.radio.radio_service import RadioService
 from pkgs.vendor.vendor_service import VendorService
 from pkgs.display.display_service import DisplayService
+from pkgs.runtime.runtime_service import RuntimeService
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 
 ###
 # This monolithic madness is the entire UI of pi sniffer. It communicates with
@@ -99,6 +104,11 @@ client_view_pages = [
 ]
 client_view_page_index = 0
 
+width = disp.width
+height = disp.height
+image = Image.new('1', (width, height))
+draw = ImageDraw.Draw(image)
+
 # current view
 current_view = status_view
 
@@ -122,8 +132,7 @@ font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
 ##
 # Services
 ##
-client_service = WifiClientService()
-ap_service = WifiApService()
+runtime_service = RuntimeService()
 watchdog_service = WatchdogService()
 
 
@@ -173,40 +182,15 @@ def do_status_view():
     global redraw
 
     if not button_A.value and not button_B.value:
-        # attempt a clean shutdown
-        CommandService.run(b"s", False)
-        time.sleep(5)
-        subprocess.run(["shutdown", "-h", "now"])
+        RuntimeService.power_off()
         return False
 
     elif not button_B.value:
-        # start kismet and pi sniffer
-        kismet = subprocess.run(["ps", "-C", "kismet_server"], capture_output=True)
-        if kismet.stdout.find(b"kismet_server") == -1:
-            redraw = True
-            subprocess.Popen(["kismet_server", "-f", "/home/pi/kismet.conf", "-n", "--daemonize"])
-            time.sleep(3)  # give it a second to get established
-
-        pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
-        if pi_sniffer.stdout.find(b"pi_sniffer") == -1:
-            redraw = True
-            subprocess.Popen([
-                "/home/pi/pi_sniffer/build/pi_sniffer",
-                "-c", "/home/pi/pi_sniffer/pi_sniffer.conf",
-                "-k",
-                socket_ip,
-                "-p",
-                "3501"
-            ])
-    elif not button_A.value:
-        # shutdown kismet and pi sniffer
+        runtime_service.start()
         redraw = True
-        CommandService.run(b"s", False)
-        kismet = subprocess.run(["ps", "-C", "kismet_server"], capture_output=True)
-        if kismet.stdout.find(b"kismet_server") != -1:
-            CommandService.do_kismet_command(b"SHUTDOWN")
-            subprocess.run(["airmon-ng", "stop", "wlan0mon"])
-            subprocess.run(["airmon-ng", "stop", "wlan1mon"])
+    elif not button_A.value:
+        runtime_service.stop()
+        redraw = True
 
     if redraw:
         draw.rectangle((0, 0, width, 10), outline=1, fill=1)
@@ -257,16 +241,19 @@ def do_overview():
         if overview_stats is not None:
             stats = overview_stats.split(b",")
             second_pane_start_x = width / 2 + 2
-            draw.text((0, 10), "Time: " + stats[0].decode("utf-8"), font=font, fill=1)
-            draw.text((0, 20), "APs: " + stats[1].decode("utf-8"), font=font, fill=1)
-            draw.text((0, 30), "Open: " + stats[2].decode("utf-8"), font=font, fill=1)
-            draw.text((0, 40), "WEP: " + stats[3].decode("utf-8"), font=font, fill=1)
-            draw.text((0, 50), "WPA: " + stats[4].decode("utf-8"), font=font, fill=1)
-            draw.text((second_pane_start_x, 10), "Pkts: " + stats[5].decode("utf-8"), font=font, fill=1)
-            draw.text((second_pane_start_x, 20), "Bcns: " + stats[6].decode("utf-8"), font=font, fill=1)
-            draw.text((second_pane_start_x, 30), "Data: " + stats[7].decode("utf-8"), font=font, fill=1)
-            draw.text((second_pane_start_x, 40), "Enc: " + stats[8].decode("utf-8"), font=font, fill=1)
-            draw.text((second_pane_start_x, 50), "EAPOL: " + stats[9].decode("utf-8"), font=font, fill=1)
+            try:
+                draw.text((0, 10), "Time: " + stats[0].decode("utf-8"), font=font, fill=1)
+                draw.text((0, 20), "APs: " + stats[1].decode("utf-8"), font=font, fill=1)
+                draw.text((0, 30), "Open: " + stats[2].decode("utf-8"), font=font, fill=1)
+                draw.text((0, 40), "WEP: " + stats[3].decode("utf-8"), font=font, fill=1)
+                draw.text((0, 50), "WPA: " + stats[4].decode("utf-8"), font=font, fill=1)
+                draw.text((second_pane_start_x, 10), "Pkts: " + stats[5].decode("utf-8"), font=font, fill=1)
+                draw.text((second_pane_start_x, 20), "Bcns: " + stats[6].decode("utf-8"), font=font, fill=1)
+                draw.text((second_pane_start_x, 30), "Data: " + stats[7].decode("utf-8"), font=font, fill=1)
+                draw.text((second_pane_start_x, 40), "Enc: " + stats[8].decode("utf-8"), font=font, fill=1)
+                draw.text((second_pane_start_x, 50), "EAPOL: " + stats[9].decode("utf-8"), font=font, fill=1)
+            except Exception as e:
+                print(e)
 
 
 ##
@@ -416,7 +403,7 @@ def do_gps_view():
 ##
 # Populate the client view and handle user input
 ##
-def do_client_view():
+def do_client_view(ap_service, client_service):
     global redraw
     global selected_client
     global client_view_page_index
@@ -443,8 +430,8 @@ def do_client_view():
         if client_view_page_index >= len(client_view_pages):
             client_view_page_index = 0
 
-    if redraw is True and selected_client == 0:
-        client_service.refresh_clients()
+    # if redraw is True and selected_client == 0:
+    #     client_service.refresh_clients()
 
     if redraw is True:
         # divide screen
@@ -537,7 +524,7 @@ def do_client_view():
             location = location + 1
 
 
-def do_ap_view():
+def do_ap_view(ap_service):
     global redraw
     global selected_ap
     global ap_view_type
@@ -558,8 +545,8 @@ def do_ap_view():
         else:
             ap_view_type = ap_view_type_station_info
         redraw = True
-    elif redraw is True and selected_ap == 0:
-        ap_service.refresh_ap_list()
+    # elif redraw is True and selected_ap == 0:
+    #     ap_service.refresh_ap_list()
 
     if redraw:
         # divide screen
@@ -638,6 +625,28 @@ def do_lock_screen():
             draw.text((0, 10), "Unlocked", font=font, fill=1)
 
 
+def refresh_data(ap_service, client_service):
+    print('Refresh called')
+    while True:
+        try:
+            if runtime_service.is_sniffer_running():
+                print('Runtime service is running')
+                ap_service.refresh_ap_list()
+                client_service.refresh_clients()
+                print('Refreshed')
+            else:
+                print('Runtime service is not running')
+        except Exception as e:
+            print(e)
+        time.sleep(3)
+
+
+# try:
+# _thread.start_new_thread(refresh_data, (0.1, ))
+# except Exception as e:
+#     print(e)
+#     print('Could not start data get thread')
+
 # ensure the echo is disabled on the gps tty. Really annoying this needs to be done.
 subprocess.run(["stty", "-F", "/dev/ttyACM0", "-echo"])
 
@@ -649,71 +658,116 @@ subprocess.run(["/usr/bin/tvservice", "-o"])
 disp.fill(0)
 disp.show()
 
-while True:
 
-    if locked:
-        # the user can lock the display in the lock screen. If they have, don't
-        # do any other UI processing. We will have to still do the watch dog
-        # logic though
-        if not button_A.value and not button_U.value:
-            locked = False
-            redraw = True
-        else:
+def main_event_loop(ap_service, client_service):
+    global last_update
+    global locked
+    global redraw
+    global width
+    global height
+    global image
+    global draw
+    refresh_data_limit = 100
+    refresh_data_idx = 0
+    while True:
+        if locked:
+            # the user can lock the display in the lock screen. If they have, don't
+            # do any other UI processing. We will have to still do the watch dog
+            # logic though
+            if not button_A.value and not button_U.value:
+                locked = False
+                redraw = True
+            else:
+                watchdog_service.set_current_time(time.time())
+                if (watchdog_service.get_current_time() - 6) > last_update:
+                    redraw = True
+                watchdog_service.do_watchdog()
+                time.sleep(0.1)
+                continue
+
+            # check if the user is changing the view
+        check_view()
+
+        # see if we should be refreshing
+        if not redraw:
             watchdog_service.set_current_time(time.time())
             if (watchdog_service.get_current_time() - 6) > last_update:
                 redraw = True
+
+            # while we have current time let's kick the dog
             watchdog_service.do_watchdog()
-            time.sleep(0.1)
-            continue
 
-    # check if the user is changing the view
-    check_view()
+        if refresh_data_idx >= refresh_data_limit:
+            refresh_data_idx = -1
 
-    # see if we should be refreshing
-    if not redraw:
-        watchdog_service.set_current_time(time.time())
-        if (watchdog_service.get_current_time() - 6) > last_update:
-            redraw = True
+        refresh_data_idx += 1
 
-        # while we have current time let's kick the dog
-        watchdog_service.do_watchdog()
+        # we might draw! Create a blank canvas
+        width = disp.width
+        height = disp.height
+        image = Image.new('1', (width, height))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-    # we might draw! Create a blank canvas
-    width = disp.width
-    height = disp.height
-    image = Image.new('1', (width, height))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, width, height), outline=0, fill=0)
+        # which view to draw to the screen
+        if current_view == status_view:
+            if not do_status_view():
+                # user has requested shutdown
+                break
+        elif current_view == overview:
+            do_overview()
+        elif current_view == antenna:
+            do_ant_view()
+        elif current_view == system_view:
+            do_system_view()
+        elif current_view == gps_view:
+            do_gps_view()
+        elif current_view == client_view:
+            do_client_view(ap_service, client_service)
+        elif current_view == ap_view:
+            do_ap_view(ap_service)
+        elif current_view == lock_screen:
+            do_lock_screen()
+        else:
+            print("oh no! Why are we here?")
 
-    # which view to draw to the screen
-    if current_view == status_view:
-        if not do_status_view():
-            # user has requested shutdown
-            break
-    elif current_view == overview:
-        do_overview()
-    elif current_view == antenna:
-        do_ant_view()
-    elif current_view == system_view:
-        do_system_view()
-    elif current_view == gps_view:
-        do_gps_view()
-    elif current_view == client_view:
-        do_client_view()
-    elif current_view == ap_view:
-        do_ap_view()
-    elif current_view == lock_screen:
-        do_lock_screen()
-    else:
-        print("oh no! Why are we here?")
+        if redraw:
+            last_update = time.time()
+            disp.image(image)
+            disp.show()
+            redraw = False
 
-    if redraw:
-        last_update = time.time()
-        disp.image(image)
-        disp.show()
-        redraw = False
+        time.sleep(0.1)
 
-    time.sleep(0.1)
 
 disp.fill(0)
 disp.show()
+
+
+def main():
+    with Manager() as manager:
+        client_service = WifiClientService()
+        ap_service = WifiApService()
+        ap_service.aps = manager.dict()
+        client_service.client_map = manager.dict()
+        main_exe = Process(target=main_event_loop, args=(ap_service, client_service))
+        data_exe = Process(target=refresh_data, args=(ap_service, client_service))
+
+        main_exe.start()
+        data_exe.start()
+
+        main_exe.join()
+        data_exe.join()
+
+        while True:
+            pass
+        # executor = ProcessPoolExecutor(2)
+        # loop = asyncio.get_event_loop()
+        # main_exe = loop.run_in_executor(executor, main_event_loop)
+        # data_exe = loop.run_in_executor(executor, refresh_data)
+
+    # loop.run_forever()
+
+
+if __name__ == "__main__":
+    main()

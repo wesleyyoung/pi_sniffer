@@ -25,12 +25,34 @@ class CommandService:
     @staticmethod
     def run(command, get_response):
         data = None
-
+        s = create_udp_socket()
+        s.settimeout(2)
         pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
         if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
-            backend_sock.sendto(command + b"\n", (socket_ip, socket_port))
+            s.sendto(command + b"\n", (socket_ip, socket_port))
             if get_response is True:
-                data = backend_sock.recvfrom(65535)[0]
+                try:
+                    data = s.recvfrom(65535)[0]
+                except TimeoutError as e:
+                    print(e)
+
+        return data
+
+    @staticmethod
+    async def run_async(command, get_response):
+        data = None
+        s = create_udp_socket()
+        s.settimeout(2)
+        pi_sniffer = subprocess.run(["ps", "-C", "pi_sniffer"], capture_output=True)
+        if pi_sniffer.stdout.find(b"pi_sniffer") != -1:
+            s.sendto(command + b"\n", (socket_ip, socket_port))
+            if get_response is True:
+                try:
+                    data = s.recvfrom(65535)[0]
+                except TimeoutError as e:
+                    print(e)
+                except Exception as e:
+                    print(e)
 
         return data
 

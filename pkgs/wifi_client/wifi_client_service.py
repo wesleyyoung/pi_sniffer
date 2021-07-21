@@ -4,12 +4,14 @@ import subprocess
 from pkgs.vendor.vendor_service import VendorService
 from pkgs.command.command_service import CommandService
 from operator import itemgetter
+from multiprocessing import Manager
 
 
 class WifiClientService:
 
     def __init__(self):
-        self.client_map = {}
+        with Manager() as manager:
+            self.client_map = manager.dict()
 
     def deauth(self, mac, station_bssid, iface="wlan0mon"):
         subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
@@ -31,7 +33,10 @@ class WifiClientService:
         return self.client_map[mac]
 
     def get_clients(self):
-        return itemgetter(*list(self.client_map.keys()))(self.client_map)
+        try:
+            return itemgetter(*list(self.client_map.keys()))(self.client_map)
+        except:
+            return []
 
     def get_clients_from_socket(self):
         clients_raw = CommandService.run(b"c", True)
@@ -41,8 +46,22 @@ class WifiClientService:
         else:
             return []
 
+    async def get_clients_from_socket_async(self):
+        clients_raw = await CommandService.run_async(b"c", True)
+        if clients_raw is not None:
+            clients = clients_raw.splitlines()
+            return clients[:len(clients) - 1]
+        else:
+            return []
+
     def refresh_clients(self):
         clients = self.get_clients_from_socket()
+        for client in clients:
+            mac = client.decode("utf-8").lower().strip()
+            self.client_map[mac] = self.get_client_info(client)
+
+    async def refresh_clients_async(self):
+        clients = await self.get_clients_from_socket_async()
         for client in clients:
             mac = client.decode("utf-8").lower().strip()
             self.client_map[mac] = self.get_client_info(client)
