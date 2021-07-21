@@ -39,29 +39,13 @@ class WifiClientService:
             return []
 
     def get_clients_from_socket(self):
-        clients_raw = CommandService.run(b"c", True)
-        if clients_raw is not None:
-            clients = clients_raw.splitlines()
-            return clients[:len(clients) - 1]
-        else:
-            return []
-
-    async def get_clients_from_socket_async(self):
-        clients_raw = await CommandService.run_async(b"c", True)
-        if clients_raw is not None:
-            clients = clients_raw.splitlines()
-            return clients[:len(clients) - 1]
-        else:
+        try:
+            return CommandService.run(b"c", True).splitlines()[:-1]
+        except:
             return []
 
     def refresh_clients(self):
         clients = self.get_clients_from_socket()
-        for client in clients:
-            mac = client.decode("utf-8").lower().strip()
-            self.client_map[mac] = self.get_client_info(client)
-
-    async def refresh_clients_async(self):
-        clients = await self.get_clients_from_socket_async()
         for client in clients:
             mac = client.decode("utf-8").lower().strip()
             self.client_map[mac] = self.get_client_info(client)

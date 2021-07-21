@@ -1,3 +1,6 @@
+locked = False
+
+
 ##
 # Handle the lock screen drawing and locking input (unlocked handled elsewhere)
 ##

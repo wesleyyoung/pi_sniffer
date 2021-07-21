@@ -167,8 +167,8 @@ def main_event_loop(ap_service, client_service):
                 continue
 
         # If no input
-        if is_no_input_given() and not last_update:
-            if (time.time() * 1000) - (last_update * 1000) <= 1200:
+        if is_no_input_given():
+            if (time.time() * 1000) - (last_update * 1000) <= 1500:
                 continue
 
         # check if the user is changing the view

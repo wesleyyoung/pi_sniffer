@@ -22,43 +22,20 @@ class WifiApService:
         return self.get_ap_list()[index]
 
     def get_ap_list_from_socket(self):
-        access_points = CommandService.run(b"l", True)
-        if access_points is not None:
-            ap_list = access_points.splitlines()
-            return ap_list[:len(ap_list) - 1]
-        return []
-
-    async def get_ap_list_from_socket_async(self):
-        access_points = await CommandService.run_async(b"l", True)
-        if access_points is not None:
-            ap_list = access_points.splitlines()
-            return ap_list[:len(ap_list) - 1]
-        return []
+        try:
+            return CommandService.run(b"l", True).splitlines()[:-1]
+        except:
+            return []
 
     def refresh_ap_list(self):
         aps = self.get_ap_list_from_socket()
         for ap in aps:
             info = ap.decode('utf-8').split(',')
             bssid = info[1].lower().strip()
-            ap = {
+            self.aps[bssid] = self.get_ap_info({
                 'bssid': bssid,
                 'ssid': info[0]
-            }
-            
-            ap = self.get_ap_info(ap)
-            self.aps[bssid] = ap
-
-    async def refresh_ap_list_async(self):
-        aps = await self.get_ap_list_from_socket_async()
-        for ap in aps:
-            info = ap.decode('utf-8').split(',')
-            bssid = info[1].lower().strip()
-            ap = {
-                'bssid': bssid,
-                'ssid': info[0]
-            }
-            ap = self.get_ap_info(ap)
-            self.aps[bssid] = ap
+            })
 
     def get_ap_by_bssid(self, bssid):
         bssid = str(bssid).lower().strip()
