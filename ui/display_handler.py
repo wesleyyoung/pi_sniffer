@@ -183,28 +183,31 @@ def main_event_loop(ap_service, client_service):
         draw = ImageDraw.Draw(image)
         draw.rectangle((0, 0, width, height), outline=0, fill=0)
 
-        # which view to draw to the screen
-        if current_view == status_view:
-            if not do_status_view(button_A, button_B, draw, font, width, runtime_service):
-                # user has requested shutdown
-                break
-        elif current_view == overview:
-            do_overview(draw, width, font, height)
-        elif current_view == antenna:
-            do_ant_view(button_B, button_U, button_D, draw, width, height, font)
-        elif current_view == system_view:
-            do_system_view(draw, font, width)
-        elif current_view == gps_view:
-            do_gps_view(draw, width, font)
-        elif current_view == client_view:
-            do_client_view(button_A, button_B, button_U, button_D, draw, width, height, font, ap_service,
-                           client_service)
-        elif current_view == ap_view:
-            do_ap_view(button_A, button_U, button_D, draw, width, height, font, ap_service)
-        elif current_view == lock_screen:
-            do_lock_screen(button_B, draw, width, font)
-        else:
-            print("oh no! Why are we here?")
+        try:
+            # which view to draw to the screen
+            if current_view == status_view:
+                if not do_status_view(button_A, button_B, draw, font, width, runtime_service):
+                    # user has requested shutdown
+                    break
+            elif current_view == overview:
+                do_overview(draw, width, font, height)
+            elif current_view == antenna:
+                do_ant_view(button_B, button_U, button_D, draw, width, height, font)
+            elif current_view == system_view:
+                do_system_view(draw, font, width)
+            elif current_view == gps_view:
+                do_gps_view(draw, width, font)
+            elif current_view == client_view:
+                do_client_view(button_A, button_B, button_U, button_D, draw, width, height, font, ap_service,
+                               client_service)
+            elif current_view == ap_view:
+                do_ap_view(button_A, button_U, button_D, draw, width, height, font, ap_service)
+            elif current_view == lock_screen:
+                do_lock_screen(button_B, draw, width, font)
+            else:
+                print("oh no! Why are we here?")
+        except Exception as e:
+            print('Error displaying page', e)
 
         last_update = time.time()
         disp.image(image)
