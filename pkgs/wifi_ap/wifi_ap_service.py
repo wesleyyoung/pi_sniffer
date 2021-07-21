@@ -12,15 +12,6 @@ class WifiApService:
     def get(self, bssid):
         return self.aps[bssid]
 
-    def get_ap_list(self):
-        try:
-            return itemgetter(*list(self.aps.keys()))(self.aps)
-        except:
-            return []
-
-    def get_index(self, index):
-        return self.get_ap_list()[index]
-
     def get_ap_list_from_socket(self):
         try:
             return CommandService.run(b"l", True).splitlines()[:-1]
@@ -64,6 +55,3 @@ class WifiApService:
             return {}
         except Exception as e:
             return {}
-
-    def get_ap_info_at_index(self, index=0):
-        return self.get_ap_info(self.get_index(index))

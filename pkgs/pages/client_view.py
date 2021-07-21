@@ -57,7 +57,7 @@ def do_client_view(button_A, button_B, button_U, button_D, draw, width, height, 
         i = 0
 
     location = 0
-    while location < 5 and i < len(client_service.get_clients()):
+    while location < 5 and i < len(clients.keys()):
         try:
             client = clients[clients.keys()[i]]
             mac_address = client['mac']
@@ -106,7 +106,7 @@ def do_client_view(button_A, button_B, button_U, button_D, draw, width, height, 
                     # Vendor
                     elif client_view_title == client_view_type_vendor:
                         try:
-                            vendor = VendorService.get_vendor(mac_address)
+                            vendor = client['vendor']
                             vendor_chunks = DisplayService.get_paragraph(8, 4, vendor)
                             start_line_y = 10
                             for chunk in vendor_chunks:

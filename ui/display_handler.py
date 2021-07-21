@@ -6,6 +6,8 @@ import subprocess
 import adafruit_ssd1306
 from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
+
+from pkgs.settings.settings_service import SettingsService
 from pkgs.wifi_client.wifi_client_service import WifiClientService
 from pkgs.wifi_ap.wifi_ap_service import WifiApService
 from pkgs.watchdog.watchdog_service import WatchdogService
@@ -104,7 +106,6 @@ font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
 runtime_service = RuntimeService()
 watchdog_service = WatchdogService()
 
-
 ###
 # Globals over. I am appropriately embarrassed.
 ###
@@ -129,24 +130,37 @@ def check_view():
             current_view = current_view - 1
 
 
-def refresh_data(ap_service, client_service):
+def refresh_aps(settings_service, ap_service):
     while True:
         try:
             if runtime_service.is_sniffer_running():
                 ap_service.refresh_ap_list()
+            else:
+                pass
+        except Exception as e:
+            pass
+
+        time.sleep(settings_service.get_data_rate())
+
+
+def refresh_clients(settings_service, client_service):
+    while True:
+        try:
+            if runtime_service.is_sniffer_running():
                 client_service.refresh_clients()
             else:
                 pass
         except Exception as e:
             pass
-        time.sleep(6)
+
+        time.sleep(settings_service.get_data_rate())
 
 
 def is_no_input_given():
     return button_A.value and button_B.value and button_U.value and button_D.value and button_L.value and button_R.value
 
 
-def main_event_loop(ap_service, client_service):
+def main_event_loop(settings_service, ap_service, client_service):
     global last_update
     global locked
     global width
@@ -168,7 +182,7 @@ def main_event_loop(ap_service, client_service):
 
         # If no input
         if is_no_input_given():
-            if (time.time() * 1000) - (last_update * 1000) <= 1500:
+            if (time.time() * 1000) - (last_update * 1000) <= settings_service.get_refresh_rate():
                 continue
 
         # check if the user is changing the view
@@ -238,14 +252,22 @@ def main():
         ap_service = WifiApService()
         ap_service.aps = manager.dict()
         client_service.client_map = manager.dict()
-        main_exe = Process(target=main_event_loop, args=(ap_service, client_service))
-        data_exe = Process(target=refresh_data, args=(ap_service, client_service))
+        settings_service = SettingsService()
+        settings_service.settings = manager.dict()
+        settings_service.set_defaults()
+        processes = [
+            Process(target=main_event_loop, args=(settings_service, ap_service, client_service)),
+            Process(target=refresh_aps, args=(settings_service, ap_service, )),
+            Process(target=refresh_clients, args=(settings_service, client_service, )),
+        ]
 
-        main_exe.start()
-        data_exe.start()
+        for proc in processes:
+            time.sleep(.3)
+            proc.start()
 
-        main_exe.join()
-        data_exe.join()
+        for proc in processes:
+            time.sleep(.3)
+            proc.join()
 
         while True:
             pass

@@ -22,21 +22,8 @@ class WifiClientService:
         if station_bssid is not None:
             self.deauth(mac, station_bssid)
 
-    def deauth_at_index(self, index):
-        client = self.get_index(index)
-        self.deauth_client(client)
-
-    def get_index(self, index=0):
-        return self.get_clients()[index]
-
     def get(self, mac):
         return self.client_map[mac]
-
-    def get_clients(self):
-        try:
-            return itemgetter(*list(self.client_map.keys()))(self.client_map)
-        except:
-            return []
 
     def get_clients_from_socket(self):
         try:
@@ -47,20 +34,23 @@ class WifiClientService:
     def refresh_clients(self):
         clients = self.get_clients_from_socket()
         for client in clients:
-            mac = client.decode("utf-8").lower().strip()
-            self.client_map[mac] = self.get_client_info(client)
+            mac = client.decode("utf-8")
+            self.client_map[mac] = self.get_client_info(mac)
 
-    def get_client_info(self, client):
-        try:
-            client = client.decode('utf-8')
-        except (UnicodeDecodeError, AttributeError):
-            pass
-        data = CommandService.run(b"c" + str.encode(client), True)
-        mac = client.lower().strip()
+    def get_client_info(self, mac):
+        data = CommandService.run(b"c" + str.encode(mac), True)
         if data is not None:
             data = data.split(b",")
+            try:
+                existing_client = self.client_map[mac]
+                name = existing_client['name']
+                vendor = existing_client['vendor']
+            except:
+                vendor = VendorService.get_vendor(mac)
+                name = VendorService.create_display_name(mac, vendor)
             return {
-                'name': VendorService.get_display_name(mac),
+                'name': name,
+                'vendor': vendor,
                 'mac': mac,
                 'rssi': data[0].decode("utf-8"),
                 'station_bssid': data[1].decode("utf-8")

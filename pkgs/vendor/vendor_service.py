@@ -15,6 +15,10 @@ class VendorService:
     @staticmethod
     def get_display_name(mac):
         vendor = VendorService.get_vendor(mac)
+        return VendorService.create_display_name(mac, vendor)
+
+    @staticmethod
+    def create_display_name(mac, vendor):
         if vendor is not None:
             vendor = re.sub(r'\W+', '', vendor)
             vendor_prefix = vendor[0:8]
