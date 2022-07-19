@@ -3,6 +3,10 @@ from abc import ABC, abstractmethod
 
 class DisplayDriver(ABC):
     @abstractmethod
+    def create_display(self):
+        pass
+
+    @abstractmethod
     def get_display(self):
         pass
 
@@ -36,4 +40,8 @@ class DisplayDriver(ABC):
 
     @abstractmethod
     def prepare_button(self, button):
+        pass
+
+    @abstractmethod
+    def clear_display(self):
         pass

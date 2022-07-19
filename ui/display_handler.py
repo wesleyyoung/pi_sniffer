@@ -205,12 +205,9 @@ def main():
     # kill hdmi. power saving.
     subprocess.run(["/usr/bin/tvservice", "-o"])
 
-    # Clear display.
-    disp.fill(0)
-    disp.show()
-
-    disp.fill(0)
-    disp.show()
+    # Clear display. Twice
+    driver.clear_display()
+    driver.clear_display()
 
     with Manager() as manager:
         client_service = WifiClientService()
