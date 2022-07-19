@@ -23,7 +23,7 @@ def do_system_view(draw, font, width):
     if total_memory is None or total_memory_free is None:
         draw.text((0, 20), "Memory: Unknown%", font=font, fill=1)
     else:
-        value = 100 - ((float(total_memory_free.group(1)) / float(total_memory_free.group(1))) * 100)
+        value = 100 - ((float(total_memory.group(1)) / float(total_memory_free.group(1))) * 100)
         draw.text((0, 20), "Memory: " + str(int(value)) + "%", font=font, fill=1)
 
     if disk_usage is None:
