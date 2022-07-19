@@ -3,11 +3,35 @@ from abc import ABC, abstractmethod
 
 class DisplayDriver(ABC):
     @abstractmethod
+    def get_font(self):
+        pass
+
+    @abstractmethod
     def create_display(self):
         pass
 
     @abstractmethod
     def get_display(self):
+        pass
+
+    @abstractmethod
+    def get_display_width(self):
+        pass
+
+    @abstractmethod
+    def get_display_height(self):
+        pass
+
+    @abstractmethod
+    def draw_blank_canvas(self):
+        pass
+
+    @abstractmethod
+    def create_image(self):
+        pass
+
+    @abstractmethod
+    def create_drawable(self, image):
         pass
 
     @abstractmethod

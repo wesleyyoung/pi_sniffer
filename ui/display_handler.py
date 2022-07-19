@@ -1,7 +1,7 @@
 from multiprocessing import Process, Manager
 import time
 import subprocess
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from pkgs.driver.adafruit_1_3_bonnet import Adafruit13Bonnet
 from pkgs.settings.settings_service import SettingsService
@@ -28,7 +28,6 @@ driver = Adafruit13Bonnet()
 # Socket endpoint address
 socket_ip = "127.0.0.1"
 
-
 disp = driver.get_display()
 
 # Input pins
@@ -51,10 +50,10 @@ gps_view = 6
 lock_screen = 7
 rotate = 8  # place holder
 
-width = disp.width
-height = disp.height
-image = Image.new('1', (width, height))
-draw = ImageDraw.Draw(image)
+width = driver.get_display_width()
+height = driver.get_display_height()
+image = driver.create_image()
+draw = driver.create_drawable(image)
 
 # current view
 current_view = status_view
@@ -67,7 +66,7 @@ last_update = 0
 last_stats = None
 
 # the font all text writing will use
-font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
+font = driver.get_font()
 
 ##
 # Services
@@ -158,13 +157,6 @@ def main_event_loop(settings_service, ap_service, client_service):
         if (watchdog_service.get_current_time() - 6) > last_update:
             watchdog_service.do_watchdog()
 
-        # we might draw! Create a blank canvas
-        width = disp.width
-        height = disp.height
-        image = Image.new('1', (width, height))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, width, height), outline=0, fill=0)
-
         try:
             # which view to draw to the screen
             if current_view == status_view:
@@ -192,8 +184,7 @@ def main_event_loop(settings_service, ap_service, client_service):
             print('Error displaying page', e)
 
         last_update = time.time()
-        disp.image(image)
-        disp.show()
+        driver.draw_blank_canvas()
 
         time.sleep(0.01)
 
