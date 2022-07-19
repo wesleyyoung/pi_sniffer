@@ -1,20 +1,17 @@
-import re
-import subprocess
-
+from pkgs.api.attack.deauth import deauth
 from pkgs.vendor.vendor_service import VendorService
 from pkgs.command.command_service import CommandService
-from operator import itemgetter
 from multiprocessing import Manager
 
 
 class WifiClientService:
-
     def __init__(self):
         with Manager() as manager:
             self.client_map = manager.dict()
 
-    def deauth(self, mac, station_bssid, iface="wlan0mon"):
-        subprocess.run(["aireplay-ng", "-0", "1", "-a", station_bssid, "-c", mac, iface])
+    @staticmethod
+    def deauth(mac, station_bssid, iface="wlan0mon"):
+        deauth(mac, station_bssid, iface)
 
     def deauth_client(self, client):
         station_bssid = client['station_bssid']
@@ -25,7 +22,8 @@ class WifiClientService:
     def get(self, mac):
         return self.client_map[mac]
 
-    def get_clients_from_socket(self):
+    @staticmethod
+    def get_clients_from_socket():
         try:
             return CommandService.run(b"c", True).splitlines()[:-1]
         except:
