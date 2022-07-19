@@ -76,10 +76,6 @@ runtime_service = RuntimeService()
 watchdog_service = WatchdogService()
 
 ###
-# Globals over. I am appropriately embarrassed.
-###
-
-###
 # Have the client attempt to rotate to the next screen
 ###
 def check_view():
