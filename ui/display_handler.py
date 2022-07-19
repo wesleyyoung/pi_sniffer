@@ -1,12 +1,9 @@
 from multiprocessing import Process, Manager
 import time
-import board
-import busio
 import subprocess
-import adafruit_ssd1306
-from digitalio import DigitalInOut, Direction, Pull
 from PIL import Image, ImageDraw, ImageFont
 
+from pkgs.driver.adafruit_1_3_bonnet import Adafruit13Bonnet
 from pkgs.settings.settings_service import SettingsService
 from pkgs.wifi_client.wifi_client_service import WifiClientService
 from pkgs.wifi_ap.wifi_ap_service import WifiApService
@@ -22,54 +19,26 @@ from pkgs.pages.ap_view import do_ap_view
 from pkgs.pages.lock_view import do_lock_screen
 
 ###
-# This monolithic madness is the entire UI of pi sniffer. It communicates with
-# the pi_sniffer engine over UDP and with Kismet over TCP. It issues various
-# shell commands in order to interact with the system. It checks to see if the
-# UI needs repainting every 0.1ish seconds. An enterprising individual might
-# break this thing up.
+# Globals
 ###
 
-###
-# Hooray for globals!
-###
+# Display Driver
+driver = Adafruit13Bonnet()
 
 # Socket endpoint address
 socket_ip = "127.0.0.1"
 
-# Create the I2C interface.
-i2c = busio.I2C(board.SCL, board.SDA)
 
-# Create a "display" that represents the OLED screen
-disp = adafruit_ssd1306.SSD1306_I2C(128, 64, i2c)
+disp = driver.get_display()
 
 # Input pins
-button_A = DigitalInOut(board.D5)
-button_A.direction = Direction.INPUT
-button_A.pull = Pull.UP
-
-button_B = DigitalInOut(board.D6)
-button_B.direction = Direction.INPUT
-button_B.pull = Pull.UP
-
-button_L = DigitalInOut(board.D27)
-button_L.direction = Direction.INPUT
-button_L.pull = Pull.UP
-
-button_R = DigitalInOut(board.D23)
-button_R.direction = Direction.INPUT
-button_R.pull = Pull.UP
-
-button_U = DigitalInOut(board.D17)
-button_U.direction = Direction.INPUT
-button_U.pull = Pull.UP
-
-button_D = DigitalInOut(board.D22)
-button_D.direction = Direction.INPUT
-button_D.pull = Pull.UP
-
-button_C = DigitalInOut(board.D4)
-button_C.direction = Direction.INPUT
-button_C.pull = Pull.UP
+button_A = driver.get_button_a()
+button_B = driver.get_button_b()
+button_L = driver.get_button_l()
+button_R = driver.get_button_r()
+button_U = driver.get_button_u()
+button_D = driver.get_button_d()
+button_C = driver.get_button_c()
 
 # views
 status_view = 0
