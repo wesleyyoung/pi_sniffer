@@ -1,15 +1,8 @@
 import subprocess
-import socket
 import re
 
-
-def create_udp_socket():
-    return socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-
-def create_tcp_socket():
-    return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
+from pkgs.socket.create_tcp_socket import create_tcp_socket
+from pkgs.socket.create_udp_socket import create_udp_socket
 
 socket_ip = "127.0.0.1"
 socket_port = 1270
