@@ -1,8 +1,9 @@
 from multiprocessing import Process, Manager
 import time
 import subprocess
-from PIL import Image, ImageDraw
 
+from pkgs.api.device.disable_echo_gps import disable_echo_gps
+from pkgs.api.device.kill_hdmi import kill_hdmi
 from pkgs.driver.adafruit_1_3_bonnet import Adafruit13Bonnet
 from pkgs.settings.settings_service import SettingsService
 from pkgs.wifi_client.wifi_client_service import WifiClientService
@@ -25,19 +26,16 @@ from pkgs.pages.lock_view import do_lock_screen
 # Display Driver
 driver = Adafruit13Bonnet()
 
-# Socket endpoint address
-socket_ip = "127.0.0.1"
-
 disp = driver.get_display()
 
 # Input pins
 button_A = driver.get_button_a()
 button_B = driver.get_button_b()
-button_L = driver.get_button_l()
-button_R = driver.get_button_r()
+button_C = driver.get_button_c()
 button_U = driver.get_button_u()
 button_D = driver.get_button_d()
-button_C = driver.get_button_c()
+button_L = driver.get_button_l()
+button_R = driver.get_button_r()
 
 # views
 status_view = 0
@@ -52,8 +50,8 @@ rotate = 8  # place holder
 
 width = driver.get_display_width()
 height = driver.get_display_height()
-image = driver.create_image()
-draw = driver.create_drawable(image)
+image = driver.get_image()
+draw = driver.get_drawable()
 
 # current view
 current_view = status_view
@@ -131,6 +129,7 @@ def main_event_loop(settings_service, ap_service, client_service):
     global height
     global image
     global draw
+    global driver
     while True:
         if locked:
             # the user can lock the display in the lock screen. If they have, don't
@@ -157,44 +156,45 @@ def main_event_loop(settings_service, ap_service, client_service):
         if (watchdog_service.get_current_time() - 6) > last_update:
             watchdog_service.do_watchdog()
 
+        driver.set_blank_canvas()
+
         try:
             # which view to draw to the screen
             if current_view == status_view:
-                if not do_status_view(button_A, button_B, draw, font, width, runtime_service):
+                if not do_status_view(driver, runtime_service):
                     # user has requested shutdown
                     break
             elif current_view == overview:
-                do_overview(draw, width, font, height)
+                do_overview(driver)
             elif current_view == antenna:
-                do_ant_view(button_B, button_U, button_D, draw, width, height, font)
+                do_ant_view(driver)
             elif current_view == system_view:
-                do_system_view(draw, font, width)
+                do_system_view(driver)
             elif current_view == gps_view:
-                do_gps_view(draw, width, font)
+                do_gps_view(driver)
             elif current_view == client_view:
-                do_client_view(button_A, button_B, button_U, button_D, draw, width, height, font, ap_service,
-                               client_service)
+                do_client_view(driver, ap_service, client_service)
             elif current_view == ap_view:
-                do_ap_view(button_A, button_U, button_D, draw, width, height, font, ap_service)
+                do_ap_view(driver, ap_service)
             elif current_view == lock_screen:
-                do_lock_screen(button_B, draw, width, font)
+                do_lock_screen(driver)
             else:
                 print("oh no! Why are we here?")
         except Exception as e:
             print('Error displaying page', e)
 
         last_update = time.time()
-        driver.draw_blank_canvas()
+        driver.show()
 
         time.sleep(0.01)
 
 
 def main():
     # ensure the echo is disabled on the gps tty. Really annoying this needs to be done.
-    subprocess.run(["stty", "-F", "/dev/ttyACM0", "-echo"])
+    disable_echo_gps()
 
     # kill hdmi. power saving.
-    subprocess.run(["/usr/bin/tvservice", "-o"])
+    kill_hdmi()
 
     # Clear display. Twice
     driver.clear_display()
