@@ -26,17 +26,6 @@ from pkgs.pages.lock_view import do_lock_screen
 # Display Driver
 driver = Adafruit13Bonnet()
 
-disp = driver.get_display()
-
-# Input pins
-button_A = driver.get_button_a()
-button_B = driver.get_button_b()
-button_C = driver.get_button_c()
-button_U = driver.get_button_u()
-button_D = driver.get_button_d()
-button_L = driver.get_button_l()
-button_R = driver.get_button_r()
-
 # views
 status_view = 0
 overview = 1
@@ -48,11 +37,6 @@ gps_view = 6
 lock_screen = 7
 rotate = 8  # place holder
 
-width = driver.get_display_width()
-height = driver.get_display_height()
-image = driver.get_image()
-draw = driver.get_drawable()
-
 # current view
 current_view = status_view
 
@@ -63,14 +47,12 @@ locked = False
 last_update = 0
 last_stats = None
 
-# the font all text writing will use
-font = driver.get_font()
-
 ##
 # Services
 ##
 runtime_service = RuntimeService()
 watchdog_service = WatchdogService()
+
 
 ###
 # Have the client attempt to rotate to the next screen
@@ -79,13 +61,13 @@ def check_view():
     global current_view
 
     # Right joystick controls screen movement
-    if not button_R.value:
+    if driver.is_right_pressed():
         # move to the next screen
         current_view = current_view + 1
         current_view = current_view % rotate
 
     # Left joystick controls screen movement too
-    elif not button_L.value:
+    elif driver.is_left_pressed():
         if current_view == 0:
             current_view = lock_screen
         else:
@@ -119,23 +101,21 @@ def refresh_clients(settings_service, client_service):
 
 
 def is_no_input_given():
-    return button_A.value and button_B.value and button_U.value and button_D.value and button_L.value and button_R.value
+    return not driver.is_a_pressed() and not driver.is_b_pressed() \
+           and not driver.is_up_pressed() and not driver.is_down_pressed() \
+           and not driver.is_left_pressed() and not driver.is_right_pressed()
 
 
 def main_event_loop(settings_service, ap_service, client_service):
     global last_update
     global locked
-    global width
-    global height
-    global image
-    global draw
     global driver
     while True:
         if locked:
             # the user can lock the display in the lock screen. If they have, don't
             # do any other UI processing. We will have to still do the watch dog
             # logic though
-            if not button_A.value and not button_U.value:
+            if driver.is_a_pressed() and driver.is_up_pressed():
                 locked = False
             else:
                 watchdog_service.set_current_time(time.time())
@@ -210,8 +190,8 @@ def main():
         settings_service.set_defaults()
         processes = [
             Process(target=main_event_loop, args=(settings_service, ap_service, client_service)),
-            Process(target=refresh_aps, args=(settings_service, ap_service, )),
-            Process(target=refresh_clients, args=(settings_service, client_service, )),
+            Process(target=refresh_aps, args=(settings_service, ap_service,)),
+            Process(target=refresh_clients, args=(settings_service, client_service,)),
         ]
 
         for proc in processes:
