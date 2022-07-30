@@ -1,6 +1,5 @@
 from multiprocessing import Process, Manager
 import time
-import subprocess
 
 from pkgs.api.device.disable_echo_gps import disable_echo_gps
 from pkgs.api.device.kill_hdmi import kill_hdmi
