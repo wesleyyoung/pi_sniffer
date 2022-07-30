@@ -15,13 +15,13 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
         self.display = self.create_display()
         self.image = self.create_image()
         self.drawable = self.create_drawable(self.image)
-        self.button_A = self.prepare_button(DigitalInOut(board.D5))
-        self.button_B = self.prepare_button(DigitalInOut(board.D6))
-        self.button_C = self.prepare_button(DigitalInOut(board.D4))
-        self.button_U = self.prepare_button(DigitalInOut(board.D17))
-        self.button_D = self.prepare_button(DigitalInOut(board.D22))
-        self.button_L = self.prepare_button(DigitalInOut(board.D27))
-        self.button_R = self.prepare_button(DigitalInOut(board.D23))
+        self.button_A = self.register_button(DigitalInOut(board.D5))
+        self.button_B = self.register_button(DigitalInOut(board.D6))
+        self.button_C = self.register_button(DigitalInOut(board.D4))
+        self.button_U = self.register_button(DigitalInOut(board.D17))
+        self.button_D = self.register_button(DigitalInOut(board.D22))
+        self.button_L = self.register_button(DigitalInOut(board.D27))
+        self.button_R = self.register_button(DigitalInOut(board.D23))
         self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
 
     def clear_display(self):
@@ -63,7 +63,7 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
         self.display.show()
 
     def show(self):
-        self.display.image(self.image)
+        self.draw_image(self.image)
         self.display.show()
 
     def set_blank_canvas(self):
@@ -111,7 +111,7 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
     def get_button_d(self):
         return self.button_D
 
-    def prepare_button(self, button):
+    def register_button(self, button):
         button.direction = Direction.INPUT
         button.pull = Pull.UP
         return button

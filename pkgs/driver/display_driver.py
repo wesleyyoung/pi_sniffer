@@ -63,7 +63,7 @@ class DisplayDriver(ABC):
         pass
 
     @abstractmethod
-    def prepare_button(self, button):
+    def register_button(self, button):
         pass
 
     @abstractmethod
