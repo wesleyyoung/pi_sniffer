@@ -1,4 +1,5 @@
 from pkgs.display.display_service import DisplayService
+from pkgs.driver.display_driver import DisplayDriver
 from pkgs.vendor.vendor_service import VendorService
 
 selected_ap = 0
@@ -8,25 +9,22 @@ ap_view_type = ap_view_type_station_info
 selected_ant = 0
 
 
-def do_ap_view(driver, ap_service):
+def do_ap_view(driver: DisplayDriver, ap_service):
     global selected_ap
     global ap_view_type
     global ap_view_type_station_info
     global ap_view_type_radio_info
-    down_press = driver.button_D.value
-    up_press = driver.button_U.value
-    a_press = driver.button_A.value
     width = driver.get_display_width()
     height = driver.get_display_height()
     aps = ap_service.aps
 
-    if not down_press:  # down arrow
+    if driver.is_down_pressed():  # down arrow
         if selected_ap < len(aps.keys()):
             selected_ap = selected_ap + 1
-    elif not up_press:  # up arrow
+    elif driver.is_up_pressed():  # up arrow
         if selected_ap > 0:
             selected_ap = selected_ap - 1
-    elif not a_press:
+    elif driver.is_a_pressed():
         if ap_view_type == ap_view_type_station_info:
             ap_view_type = ap_view_type_radio_info
         else:

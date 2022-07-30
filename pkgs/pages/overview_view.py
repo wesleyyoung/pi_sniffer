@@ -1,10 +1,13 @@
 from pkgs.command.command_service import CommandService
 
 
+from pkgs.driver.display_driver import DisplayDriver
+
+
 ##
 # Populate the overview screen
 ##
-def do_overview(driver):
+def do_overview(driver: DisplayDriver):
     width = driver.get_display_width()
     height = driver.get_display_height()
 

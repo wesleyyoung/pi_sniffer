@@ -111,6 +111,30 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
     def get_button_d(self):
         return self.button_D
 
+    def is_btn_pressed(self, button):
+        return not button.value
+
+    def is_a_pressed(self):
+        return self.is_btn_pressed(self.button_A)
+
+    def is_b_pressed(self):
+        return self.is_btn_pressed(self.button_B)
+
+    def is_c_pressed(self):
+        return self.is_btn_pressed(self.button_C)
+
+    def is_up_pressed(self):
+        return self.is_btn_pressed(self.button_U)
+
+    def is_down_pressed(self):
+        return self.is_btn_pressed(self.button_D)
+
+    def is_left_pressed(self):
+        return self.is_btn_pressed(self.button_L)
+
+    def is_right_pressed(self):
+        return self.is_btn_pressed(self.button_R)
+
     def register_button(self, button):
         button.direction = Direction.INPUT
         button.pull = Pull.UP

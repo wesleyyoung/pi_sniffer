@@ -1,3 +1,4 @@
+from pkgs.driver.display_driver import DisplayDriver
 from pkgs.runtime.runtime_service import RuntimeService
 import subprocess
 
@@ -5,18 +6,18 @@ import subprocess
 ##
 # Populate the start/status view
 ##
-def do_status_view(driver, runtime_service):
-    a_press = driver.button_A.value
-    b_press = driver.button_B.value
+def do_status_view(driver: DisplayDriver, runtime_service):
+    a_press = driver.is_a_pressed()
+    b_press = driver.is_b_pressed()
     width = driver.get_display_width()
 
-    if not a_press and not b_press:
+    if a_press and b_press:
         RuntimeService.power_off()
         return False
 
-    elif not b_press:
+    elif b_press:
         runtime_service.start()
-    elif not a_press:
+    elif a_press:
         runtime_service.stop()
 
     driver.draw_rect((0, 0, width, 10))

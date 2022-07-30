@@ -2,9 +2,10 @@ from pkgs.api.sys.cpu_util import cpu_util
 from pkgs.api.sys.disk import disk_usage
 from pkgs.api.sys.mem import total_mem, mem_free
 from pkgs.api.sys.temp import temp
+from pkgs.driver.display_driver import DisplayDriver
 
 
-def do_system_view(driver):
+def do_system_view(driver: DisplayDriver):
     width = driver.get_display_width()
     driver.draw_rect((0, 0, width, 10))
     driver.draw_text((width / 2) - 36, 0, "System Status", fill=0)

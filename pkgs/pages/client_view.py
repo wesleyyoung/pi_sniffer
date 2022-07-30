@@ -1,5 +1,5 @@
 from pkgs.display.display_service import DisplayService
-from pkgs.vendor.vendor_service import VendorService
+from pkgs.driver.display_driver import DisplayDriver
 
 selected_client = 0
 selected_client_mac = ''
@@ -21,24 +21,20 @@ client_view_page_index = 0
 ##
 # Populate the client view and handle user input
 ##
-def do_client_view(driver, ap_service, client_service):
+def do_client_view(driver: DisplayDriver, ap_service, client_service):
     global selected_client
     global client_view_page_index
     clients = client_service.client_map
-    down_press = driver.button_D.value
-    up_press = driver.button_U.value
-    a_press = driver.button_A.value
-    b_press = driver.button_B.value
     width = driver.get_display_width()
     height = driver.get_display_height()
 
-    if not down_press:  # down arrow
+    if driver.is_down_pressed():  # down arrow
         if selected_client < len(clients.keys()):
             selected_client = selected_client + 1
-    elif not up_press:  # up arrow
+    elif driver.is_up_pressed():  # up arrow
         if selected_client > 0:
             selected_client = selected_client - 1
-    elif not b_press:
+    elif driver.is_b_pressed():
         if selected_client > 0:
             try:
                 selected_client_record = clients[clients.keys()[selected_client - 1]]
@@ -46,7 +42,7 @@ def do_client_view(driver, ap_service, client_service):
             except Exception as e:
                 print(e)
                 pass
-    elif not a_press:
+    elif driver.is_a_pressed():
         client_view_page_index += 1
         if client_view_page_index >= len(client_view_pages):
             client_view_page_index = 0

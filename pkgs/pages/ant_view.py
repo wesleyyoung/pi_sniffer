@@ -1,3 +1,4 @@
+from pkgs.driver.display_driver import DisplayDriver
 from pkgs.radio.radio_service import RadioService
 import time
 
@@ -7,21 +8,18 @@ selected_ant = 0
 ##
 # Handle antenna view and input
 ##
-def do_ant_view(driver):
+def do_ant_view(driver: DisplayDriver):
     global selected_ant
-    down_press = driver.button_D.value
-    up_press = driver.button_U.value
-    b_press = driver.button_B.value
     width = driver.get_display_width()
     height = driver.get_display_height()
 
-    if not down_press:  # down arrow
+    if driver.is_down_pressed():  # down arrow
         if selected_ant < 2:
             selected_ant = selected_ant + 1
-    elif not up_press:  # up arrow
+    elif driver.is_up_pressed():  # up arrow
         if selected_ant > 0:
             selected_ant = selected_ant - 1
-    elif not b_press and selected_ant != 0:
+    elif driver.is_b_pressed() and selected_ant != 0:
         if selected_ant == 1:
             if RadioService.is_antenna_running("wlan0mon") is False:
                 # if the antenna doesn't exist do nothing

@@ -1,15 +1,16 @@
+from pkgs.driver.display_driver import DisplayDriver
+
 locked = False
 
 
 ##
 # Handle the lock screen drawing and locking input (unlocked handled elsewhere)
 ##
-def do_lock_screen(driver):
+def do_lock_screen(driver: DisplayDriver):
     global locked
     width = driver.get_display_width()
-    b_press = driver.button_B.value
 
-    if not b_press:  # button 6
+    if driver.is_b_pressed():  # button 6
         locked = True
 
     driver.draw_rect((0, 0, width, 10))

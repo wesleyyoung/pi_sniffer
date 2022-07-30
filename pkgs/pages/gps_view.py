@@ -1,11 +1,13 @@
 import subprocess
 import re
 
+from pkgs.driver.display_driver import DisplayDriver
+
 
 ##
 # Populate the GPS view
 ##
-def do_gps_view(driver):
+def do_gps_view(driver: DisplayDriver):
     width = driver.get_display_width()
     driver.draw_rect((0, 0, width, 10))
     driver.draw_text((width / 2) - 28, 0, "GPS Status", fill=0)
@@ -30,4 +32,4 @@ def do_gps_view(driver):
                 driver.draw_text(0, 30, "No sync")
             else:
                 driver.draw_text(0, 30, "Lat: " + result.group(1).decode("utf-8"))
-                driver.draw_text(0, 40,  "Lon: " + result.group(2).decode("utf-8"))
+                driver.draw_text(0, 40, "Lon: " + result.group(2).decode("utf-8"))
