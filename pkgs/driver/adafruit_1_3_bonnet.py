@@ -13,9 +13,16 @@ i2c = busio.I2C(board.SCL, board.SDA)
 class Adafruit13Bonnet(DisplayDriver, ABC):
     def __init__(self):
         self.display = self.create_display()
-
-    def get_font(self):
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
+        self.image = self.create_image()
+        self.drawable = self.create_drawable(self.image)
+        self.button_A = self.prepare_button(DigitalInOut(board.D5))
+        self.button_B = self.prepare_button(DigitalInOut(board.D6))
+        self.button_C = self.prepare_button(DigitalInOut(board.D4))
+        self.button_U = self.prepare_button(DigitalInOut(board.D17))
+        self.button_D = self.prepare_button(DigitalInOut(board.D22))
+        self.button_L = self.prepare_button(DigitalInOut(board.D27))
+        self.button_R = self.prepare_button(DigitalInOut(board.D23))
+        self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 9)
 
     def clear_display(self):
         self.display.fill(0)
@@ -34,6 +41,15 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
     def get_display(self):
         return self.display
 
+    def get_drawable(self):
+        return self.drawable
+
+    def get_font(self):
+        return self.font
+
+    def get_image(self):
+        return self.image
+
     def create_image(self):
         width = self.get_display_width()
         height = self.get_display_height()
@@ -46,6 +62,17 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
         self.display.image(image)
         self.display.show()
 
+    def show(self):
+        self.display.image(self.image)
+        self.display.show()
+
+    def set_blank_canvas(self):
+        width = self.get_display_width()
+        height = self.get_display_height()
+        self.image = Image.new('1', (width, height))
+        self.drawable = ImageDraw.Draw(self.image)
+        self.drawable.rectangle((0, 0, width, height), outline=0, fill=0)
+
     def draw_blank_canvas(self):
         width = self.get_display_width()
         height = self.get_display_height()
@@ -54,26 +81,35 @@ class Adafruit13Bonnet(DisplayDriver, ABC):
         draw.rectangle((0, 0, width, height), outline=0, fill=0)
         self.draw_image(image)
 
+    def draw_text(self, x, y, text, fill=1):
+        self.drawable.text((x, y), text, font=self.font, fill=fill)
+
+    def draw_rect(self, xy, outline=1, fill=1):
+        self.drawable.rectangle(xy, outline=outline, fill=fill)
+
+    def draw_line(self, xy, fill=1):
+        self.drawable.line(xy, fill=fill)
+
     def get_button_a(self):
-        return self.prepare_button(DigitalInOut(board.D5))
+        return self.button_A
 
     def get_button_b(self):
-        return self.prepare_button(DigitalInOut(board.D6))
+        return self.button_B
 
     def get_button_c(self):
-        return self.prepare_button(DigitalInOut(board.D4))
+        return self.button_C
 
     def get_button_l(self):
-        return self.prepare_button(DigitalInOut(board.D27))
+        return self.button_L
 
     def get_button_r(self):
-        return self.prepare_button(DigitalInOut(board.D23))
+        return self.button_R
 
     def get_button_u(self):
-        return self.prepare_button(DigitalInOut(board.D17))
+        return self.button_U
 
     def get_button_d(self):
-        return self.prepare_button(DigitalInOut(board.D22))
+        return self.button_D
 
     def prepare_button(self, button):
         button.direction = Direction.INPUT
