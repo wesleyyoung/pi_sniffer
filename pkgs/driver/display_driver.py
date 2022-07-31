@@ -113,3 +113,11 @@ class DisplayDriver(ABC):
     @abstractmethod
     def draw_line(self, xy, fil):
         pass
+
+    @abstractmethod
+    def show(self):
+        pass
+
+    @abstractmethod
+    def set_blank_canvas(self):
+        pass
