@@ -55,6 +55,10 @@ def check_view_update_request(display_driver: DisplayDriver):
             current_view = current_view - 1
 
 
+def is_time_to_refresh(settings_service: SettingsService):
+    return (time.time() * 1000) - (last_update * 1000) >= settings_service.get_refresh_rate()
+
+
 def ui_event_loop(watchdog_service: WatchdogService, runtime_service: RuntimeService,
                   settings_service: SettingsService, display_driver: DisplayDriver,
                   ap_service: WifiApService, client_service: WifiClientService):
@@ -75,7 +79,7 @@ def ui_event_loop(watchdog_service: WatchdogService, runtime_service: RuntimeSer
 
         # If no input
         if is_no_input_given():
-            if (time.time() * 1000) - (last_update * 1000) <= settings_service.get_refresh_rate():
+            if not is_time_to_refresh(settings_service):
                 continue
 
         # check if the user is changing the view
@@ -89,7 +93,6 @@ def ui_event_loop(watchdog_service: WatchdogService, runtime_service: RuntimeSer
         display_driver.set_blank_canvas()
 
         try:
-            # which view to draw to the screen
             if current_view == status_view:
                 if not do_status_view(display_driver, runtime_service):
                     # user has requested shutdown
